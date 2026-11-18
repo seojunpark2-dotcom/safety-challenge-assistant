@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
                         model.structure = ""
                         p.edit().putString("target", model.target).apply()
                     }) { Text("진단 대상 저장") }
-                    Text("대상 앱을 열고 돌아온 뒤 결과를 불러오세요. AI 퀴즈를 설정하면 새 퀴즈 문장만 Gemini로 전송합니다.")
+                    Text("대상 앱을 열고 돌아온 뒤 결과를 불러오세요. AI 퀴즈를 설정하면 새 퀴즈 문장과 관련 공식 자료를 Gemini로 전송합니다. 무료 프로젝트의 키를 사용할 수 있습니다.")
                     Button(onClick = { model.pkg = DiagnosticService.lastPackage; model.structure = DiagnosticService.structure }) { Text("최근 화면 진단 결과 보기") }
                     Text("패키지: ${model.pkg}")
                     Text(model.structure, style = MaterialTheme.typography.bodySmall)
