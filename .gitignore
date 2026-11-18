@@ -9,3 +9,4 @@ replay_pid*.log
 .serena/
 .kotlin/
 *.apk
+*.apk.sha256
