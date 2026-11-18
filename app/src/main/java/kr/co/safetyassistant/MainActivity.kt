@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -51,7 +52,7 @@ class MainActivity : ComponentActivity() {
                         model.structure = ""
                         p.edit().putString("target", model.target).apply()
                     }) { Text("진단 대상 저장") }
-                    Text("대상 앱을 열고 돌아온 뒤 결과를 불러오세요. 화면 문구는 진단에만 사용합니다.")
+                    Text("대상 앱을 열고 돌아온 뒤 결과를 불러오세요. AI 퀴즈를 설정하면 새 퀴즈 문장만 Gemini로 전송합니다.")
                     Button(onClick = { model.pkg = DiagnosticService.lastPackage; model.structure = DiagnosticService.structure }) { Text("최근 화면 진단 결과 보기") }
                     Text("패키지: ${model.pkg}")
                     Text(model.structure, style = MaterialTheme.typography.bodySmall)
@@ -65,6 +66,27 @@ class MainActivity : ComponentActivity() {
                         Switch(policy, { policy = it; p.edit().putBoolean("policyConfirmed", it).apply() })
                         Text("활성화할 기능의 자동 참여가 허용됨을 확인")
                     }
+                    var apiKey by remember { mutableStateOf("") }
+                    var keyStatus by remember { mutableStateOf("") }
+                    OutlinedTextField(
+                        apiKey, { apiKey = it.trim() },
+                        label = { Text("Gemini API 키") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                    Row {
+                        Button(enabled = apiKey.matches(Regex("[A-Za-z0-9_-]{20,200}")), onClick = {
+                            keyStatus = runCatching { QuizKey.save(this@MainActivity, apiKey) }
+                                .fold({ "키 저장됨" }, { "키 저장 실패" })
+                            apiKey = ""
+                        }) { Text("키 저장") }
+                        TextButton(onClick = {
+                            keyStatus = runCatching { QuizKey.clear(this@MainActivity) }
+                                .fold({ "키 삭제됨" }, { "키 삭제 실패" })
+                            apiKey = ""
+                        }) { Text("키 삭제") }
+                    }
+                    Text(keyStatus)
                     for (task in Task.entries) {
                         var active by remember(task) { mutableStateOf(p.getBoolean("auto.$task", false)) }
                         Row {

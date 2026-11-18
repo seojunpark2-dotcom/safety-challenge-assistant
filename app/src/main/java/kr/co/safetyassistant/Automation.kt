@@ -6,6 +6,7 @@ import android.os.PowerManager
 import android.view.accessibility.AccessibilityNodeInfo as Node
 import java.time.LocalDate
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 
 enum class Task(val title: String) {
     ATTENDANCE("출석"), QUIZ("퀴즈"), POINTS("포인트"), ROULETTE("룰렛")
@@ -26,7 +27,8 @@ private fun Node.nodes(depth: Int = 0): Sequence<Node> = sequence {
 
 internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries: Int) {
     val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
-    val key = "attempt.${LocalDate.now()}.$task"
+    val runDate = LocalDate.now()
+    val key = "attempt.$runDate.$task"
     fun report(message: String) = log("${task.title}: $message")
     fun reserve(): Boolean = settings.edit().putBoolean(key, true).commit()
     if (task != Task.POINTS && settings.getBoolean(key, false)) {
@@ -35,13 +37,15 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries:
     }
     var submitted = false
     var selected = false
+    var solvedQuestion: String? = null
+    var quizAnswer: Char? = null
     var rouletteOpened = false
     var scrolls = 0
     repeat(12 + retries * 3) {
         delay(650)
         if (getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
             !getSystemService(PowerManager::class.java).isInteractive ||
-            DiagnosticService.targetPackage != pkg || !settings.getBoolean("policyConfirmed", false)
+            LocalDate.now() != runDate || DiagnosticService.targetPackage != pkg || !settings.getBoolean("policyConfirmed", false)
         ) {
             report("잠금 또는 설정 변경으로 중지")
             return
@@ -102,15 +106,37 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries:
                     return
                 }
                 if ("오늘의 퀴즈" in screen && "제출하기" in labels) {
-                    if (knownQuestion !in labels) {
-                        val title = labels.indexOf("오늘의 퀴즈")
-                        val question = labels.drop(title + 1).takeWhile { "맞아요" !in it }
-                            .filter { it.length >= 15 }.singleOrNull()
-                        report("수동 확인 필요 · ${question ?: "대상 앱의 오늘의 퀴즈 확인"}")
+                    if (submitted) return@repeat
+                    val question = quizQuestion(labels)
+                    if (question == null || (solvedQuestion != null && question != solvedQuestion)) {
+                        report("문장 전체를 확인할 수 없거나 문항이 바뀜 · 수동 확인 필요")
                         return
                     }
+                    if (solvedQuestion == null) {
+                        solvedQuestion = question
+                        if (question == knownQuestion) quizAnswer = 'X'
+                        else {
+                            val result = try {
+                                val apiKey = QuizKey.load(this)
+                                if (apiKey == null) QuizVerdict(null, "Gemini 키 설정 필요")
+                                else solveQuiz(question, apiKey)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                QuizVerdict(null, "Gemini 연결 또는 응답 처리 실패")
+                            }
+                            if (result.answer == null) {
+                                report("수동 확인 필요 · $question · ${result.note}")
+                                return
+                            }
+                            quizAnswer = result.answer
+                            report("AI 판단 · ${result.note}")
+                            return@repeat
+                        }
+                    }
                     if (!selected) {
-                        selected = click({ it in setOf("틀려요", "X 틀려요", "× 틀려요") })
+                        val answer = quizAnswer ?: return
+                        selected = click({ isChoice(it, answer) })
                     } else if (!submitted) {
                         submitted = click({ it == "제출하기" }, ::reserve)
                         if (!submitted && settings.getBoolean(key, false)) {
