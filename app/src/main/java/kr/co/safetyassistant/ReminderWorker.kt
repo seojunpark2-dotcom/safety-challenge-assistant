@@ -26,28 +26,34 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
         val p = applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)
         if (!p.getBoolean("enabled", false)) return Result.success()
         val tasks = enabledTasks(p)
-        val launched = withContext(Dispatchers.Main) { DiagnosticService.instance?.start(tasks) == true }
-        schedule(applicationContext)
+        val launched = withContext(Dispatchers.Main) { DiagnosticService.instance?.start(tasks, scheduled = true) == true }
+        schedule(applicationContext, append = true)
         if (launched) return Result.success()
         if (Task.ATTENDANCE in tasks && p.getBoolean("attendanceNotifications", false)) {
-            applicationContext.notifyAttendanceResult("예약 출석을 시작하지 못했어요. 잠금 상태와 앱 설정을 확인하세요.")
+            applicationContext.notifyAttendanceResult("예약 출석을 시작하지 못했어요. 대상 앱 설치와 접근성 설정을 확인하세요.")
             return Result.success()
         }
-        val manager = applicationContext.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("reminder", "자동화 안내", NotificationManager.IMPORTANCE_DEFAULT))
-        val pending = PendingIntent.getActivity(applicationContext, 0, Intent(applicationContext, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val notification = NotificationCompat.Builder(applicationContext, "reminder").setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("안전실천 출첵 확인 필요").setContentText("기기를 잠금 해제하고 접근성 연결과 실행 설정을 확인하세요.")
-            .setContentIntent(pending).setAutoCancel(true).build()
-        try { manager.notify(1, notification) } catch (_: SecurityException) { }
+        applicationContext.notifyAutomationStatus("접근성 연결과 실행 설정을 확인하세요.")
         return Result.success()
     }
 }
-fun schedule(context: Context) {
+
+internal fun Context.notifyAutomationStatus(message: String) {
+    val manager = getSystemService(NotificationManager::class.java)
+    manager.createNotificationChannel(NotificationChannel("reminder", "자동화 안내", NotificationManager.IMPORTANCE_DEFAULT))
+    val pending = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    val notification = NotificationCompat.Builder(this, "reminder").setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setContentTitle("안전실천 출첵 확인 필요").setContentText(message)
+        .setContentIntent(pending).setAutoCancel(true).build()
+    try { manager.notify(1, notification) } catch (_: SecurityException) { }
+}
+
+fun schedule(context: Context, append: Boolean = false) {
     val p = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     val manager = WorkManager.getInstance(context)
     if (!p.getBoolean("enabled", false)) { manager.cancelUniqueWork("daily"); return }
     val delay = delayUntilNextRun(LocalDateTime.now(), p.getInt("hour", 9), p.getInt("minute", 0)).toMillis()
     val request = OneTimeWorkRequestBuilder<ReminderWorker>().setInitialDelay(delay, TimeUnit.MILLISECONDS).build()
-    manager.enqueueUniqueWork("daily", ExistingWorkPolicy.REPLACE, request)
+    val policy = if (append) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.REPLACE
+    manager.enqueueUniqueWork("daily", policy, request)
 }

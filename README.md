@@ -4,8 +4,8 @@
 
 ## 다운로드 및 설치
 
-- [APK 1.5.4 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.4.apk)
-- [ZIP 1.5.4 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.4.zip) — 브라우저에서 APK가 내려받아지지 않으면 ZIP을 받아 압축을 풀고 APK를 설치하세요.
+- [APK 1.6.0 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.6.0.apk)
+- [ZIP 1.6.0 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.6.0.zip) — 브라우저에서 APK가 내려받아지지 않으면 ZIP을 받아 압축을 풀고 APK를 설치하세요.
 
 링크를 누르면 GitHub 로그인 없이 파일을 받을 수 있습니다. 이전 버전은 [GitHub 릴리스](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/releases)에서 받을 수 있습니다.
 
@@ -25,7 +25,8 @@ APK를 스마트폰으로 옮긴 뒤, 다운로드 또는 파일 앱의 알 수 
 - 사진에서 정답이 확인된 크레인 문항은 기존 정답을 사용합니다. 새 문항은 Gemini로 판단합니다. 앱에 관련 공식 자료가 있으면 함께 전달합니다.
 - 룰렛 참여를 실행하면 잔액이 3,000포인트 이상이고 화면에 3,000포인트 참여 버튼이 있을 때 하루 한 번 시도합니다. 응모가 마감됐거나 비용이 다르면 중단합니다.
 - 출석, 제출, 룰렛 버튼을 누르기 전에 해당 날짜의 시도를 기록합니다. 응답을 읽지 못하거나 앱을 다시 시작해도 같은 날 다시 누르지 않습니다.
-- 예약은 기본 오전 9시입니다. WorkManager 실행은 지연될 수 있고 잠금 상태에서는 알림으로 안내합니다. 잠금 해제 후 도우미에서 실행할 수 있습니다.
+- 예약은 기본 오전 9시이며 Android 상태에 따라 지연될 수 있습니다. 화면이 꺼져 있으면 예약 화면을 열어 깨웁니다. 보안 잠금은 Android 화면에서 최대 30초 동안 사용자 인증을 기다립니다. 성공 후에만 출석을 진행합니다.
+- 실행 뒤에는 원래 앱을 다시 열거나 홈으로 돌아갑니다. 처음 화면이 꺼져 있었다면 Android 9 이상에서 화면 잠금 작업을 요청합니다. 새 대상 앱 작업은 최근 앱에서 제외하되, Android 제약으로 이전에 존재하던 대상 앱 카드는 남을 수 있습니다.
 - 실제 기기에서 접근성 버튼, 스크롤, 결과 문구를 검증해야 합니다. 이미지로만 표시된 버튼은 사용자가 직접 조작합니다.
 
 ## AI 퀴즈 설정

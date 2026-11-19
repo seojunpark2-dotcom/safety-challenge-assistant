@@ -54,6 +54,10 @@ class DashboardModel : ViewModel() {
 }
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        private var current = java.lang.ref.WeakReference<MainActivity>(null)
+        internal fun removeOwnTask() { current.get()?.finishAndRemoveTask() }
+    }
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private var connected by mutableStateOf(false)
     private var targetInstalled by mutableStateOf(false)
@@ -66,6 +70,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        current = java.lang.ref.WeakReference(this)
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         setContent {
             MaterialTheme(colorScheme = SafetyColors) {
@@ -215,7 +220,7 @@ class MainActivity : ComponentActivity() {
                                         schedule(this@MainActivity)
                                     }, hour, minute, true).show()
                                 }) { Text("실행 시간 %02d:%02d".format(hour, minute)) }
-                                Text("휴대폰이 잠겼거나 Android에서 백그라운드 실행을 제한하면 지연될 수 있어요.",
+                                Text("예약 시 화면을 켤 수 있어요. 보안 잠금이 걸려 있으면 직접 해제해야 이어서 실행돼요.",
                                     style = MaterialTheme.typography.bodySmall)
                                 HorizontalDivider()
                                 Task.entries.forEach { task ->

@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.app.KeyguardManager
 import android.os.PowerManager
+import android.os.Build
+import android.os.SystemClock
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.view.Gravity
@@ -32,20 +34,68 @@ class DiagnosticService : AccessibilityService() {
         prefs.edit().putString("history", (listOf(row) + previous.lines()).take(30).joinToString("\n")).apply()
     }
 
-    fun start(tasks: List<Task>): Boolean {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        if (getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
-            !getSystemService(PowerManager::class.java).isInteractive) return false
-        val pkg = TARGET_PACKAGE
+    private var wakeId = 0L
+    private var wakeResult: CompletableDeferred<Boolean>? = null
+    internal var wakeActivity: WakeActivity? = null
+
+    internal fun isWakePending(id: Long) = id != 0L && id == wakeId && wakeResult?.isActive == true
+
+    internal fun completeWake(id: Long, ready: Boolean) {
+        if (isWakePending(id)) wakeResult?.complete(ready)
+    }
+
+    private suspend fun wakeForSchedule(): Boolean {
+        val id = SystemClock.elapsedRealtimeNanos()
+        val result = CompletableDeferred<Boolean>()
+        wakeId = id
+        wakeResult = result
+        return try {
+            startActivity(Intent(this, WakeActivity::class.java).apply {
+                putExtra("wakeRequest", id)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+            })
+            withTimeoutOrNull(30_000) {
+                if (!result.await()) return@withTimeoutOrNull false
+                while (!deviceReady()) delay(100)
+                true
+            } == true
+        } finally {
+            wakeId = 0L
+            wakeResult = null
+            wakeActivity?.finishAndRemoveTask()
+            wakeActivity = null
+        }
+    }
+
+    private fun deviceReady() = getSystemService(PowerManager::class.java).isInteractive &&
+        !getSystemService(KeyguardManager::class.java).isKeyguardLocked
+
+    fun start(tasks: List<Task>, scheduled: Boolean = false): Boolean {
         if (tasks.isEmpty() || run?.isActive == true) return false
-        val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return false
+        val launch = packageManager.getLaunchIntentForPackage(TARGET_PACKAGE) ?: return false
+        val screenWasOn = getSystemService(PowerManager::class.java).isInteractive
+        val ready = deviceReady()
+        if (!ready && !scheduled) return false
+        val previousPackage = if (ready) rootInActiveWindow?.packageName?.toString() else null
+        val returnApp = previousPackage?.takeUnless {
+            it == TARGET_PACKAGE || it == packageName || it == "com.android.systemui"
+        }
         run = scope.launch {
+            var opened = false
             try {
-                startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                if (!ready && !wakeForSchedule()) {
+                    val message = "예약 실행을 시작하지 못했어요 · 화면 깨우기 또는 잠금 해제 필요"
+                    log(message)
+                    notifyAutomationStatus(message)
+                    return@launch
+                }
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+                startActivity(launch)
+                opened = true
                 log("실행 시작")
                 for (task in tasks) {
                     activeTask = task
-                    runTask(task, pkg)
+                    runTask(task, TARGET_PACKAGE)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -57,9 +107,32 @@ class DiagnosticService : AccessibilityService() {
             } finally {
                 removeCurtain()
                 activeTask = null
+                if (opened && deviceReady()) restoreDisplay(returnApp, screenWasOn)
             }
         }
         return true
+    }
+
+    private fun restoreDisplay(previous: String?, screenWasOn: Boolean) {
+        // Do not steal focus again if the user has already switched to another app.
+        if (rootInActiveWindow?.packageName?.toString() != TARGET_PACKAGE) return
+        MainActivity.removeOwnTask()
+        if (previous != null) {
+            val restored = runCatching {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    packageManager.getLaunchIntentSenderForPackage(previous).sendIntent(this, 0, null, null, null)
+                } else {
+                    val previousIntent = packageManager.getLaunchIntentForPackage(previous) ?: return@runCatching false
+                    startActivity(previousIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                true
+            }.getOrDefault(false)
+            if (restored) return
+        }
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        if (!screenWasOn && Build.VERSION.SDK_INT >= 28) {
+            performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+        }
     }
 
     private var activeTask: Task? = null
