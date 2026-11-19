@@ -26,6 +26,20 @@ class QuizAiTest {
         assertTrue(referencesFor("사무실 비상구 표지의 색을 고르시오.").isEmpty())
     }
 
+    @Test fun acceptsInferenceOnlyWhenNoReferencesWereSent() {
+        val reason = "중요한 문구를 가리면 표지를 읽을 수 없다."
+        val question = "비상구 표지를 가려도 그 내용을 읽을 수 있다."
+        val refs = referencesFor(question)
+        assertTrue(refs.isEmpty())
+        val verdict = parseQuizVerdict("X | NONE | $reason", "STOP", refs)
+        assertEquals('X', verdict.answer)
+        assertTrue(verdict.note.contains("공식 근거 없음"))
+        assertNull(parseQuizVerdict("X | 32 | $reason", "STOP", refs).answer)
+        assertNull(parseQuizVerdict("UNKNOWN", "STOP", refs).answer)
+        assertNull(parseQuizVerdict("X | NONE | $reason", "MAX_TOKENS", refs).answer)
+        assertNull(parseQuizVerdict("X | NONE | $reason", "STOP", referencesFor("안전모")).answer)
+    }
+
     @Test fun quotaErrorNeverReturnsAnAnswer() {
         val verdict = quizHttpFailure(429)
         assertNull(verdict.answer)
