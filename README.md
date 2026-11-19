@@ -4,7 +4,9 @@
 
 ## 다운로드 및 설치
 
-[APK 1.4.0 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/releases/download/v1.4.0/safety-assistant-1.4.0.apk) (저장소 접근 권한이 있는 계정으로 로그인)
+[APK 1.4.0 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/releases/download/v1.4.0/safety-assistant-1.4.0.apk)
+
+비공개 저장소의 다운로드 링크는 접근 권한이 있는 GitHub 계정으로 로그인한 브라우저에서 열어야 합니다. 404가 표시되면 [GitHub 로그인](https://github.com/login) 후 [1.4.0 릴리스 페이지](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/releases/tag/v1.4.0)를 열고 **Assets → safety-assistant-1.4.0.apk**를 누르세요. 카카오톡 등 앱 내 브라우저에서 열었다면 GitHub에 로그인한 Chrome 또는 Safari에서 다시 시도하세요.
 
 APK를 스마트폰으로 옮긴 뒤, 다운로드 또는 파일 앱의 알 수 없는 앱 설치를 허용하고 APK를 엽니다. 진단용 APK는 디버그 키로 서명합니다.
 
