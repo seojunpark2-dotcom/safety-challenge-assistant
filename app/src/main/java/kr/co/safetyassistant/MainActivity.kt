@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Image(painterResource(R.drawable.ic_safety), null, Modifier.size(48.dp))
-                                    Text("안전실천 도우미", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                    Text("안전실천 출첵", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                                 }
                                 Text(if (enabled) "매일 %02d:%02d 예약 · %d개 작업".format(hour, minute, scheduled.size)
                                     else "자동 실행 예약 꺼짐", color = Color.White)
@@ -166,7 +166,7 @@ class MainActivity : ComponentActivity() {
                                     onClick = { run(scheduled) },
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Blue)
-                                ) { Text("선택한 작업 실행") }
+                                ) { Text("수동 실행") }
                             }
                             Panel("최근 실행") {
                                 Text(model.history.lineSequence().firstOrNull { it.isNotBlank() } ?: "아직 실행 기록이 없어요.")
@@ -201,7 +201,8 @@ class MainActivity : ComponentActivity() {
                                 }
                                 OutlinedTextField(
                                     value = model.target, onValueChange = { model.target = it.trim() },
-                                    label = { Text("대상 앱 패키지명") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                                    label = { Text("대상 앱 패키지명") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                                    supportingText = { Text("안전실천 챌린지: kr.or.kosha.safetychallenge") }
                                 )
                                 Button(enabled = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+").matches(model.target), onClick = {
                                     targetSaved = model.target

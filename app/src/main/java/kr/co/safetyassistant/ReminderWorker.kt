@@ -33,7 +33,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
         manager.createNotificationChannel(NotificationChannel("reminder", "자동화 안내", NotificationManager.IMPORTANCE_DEFAULT))
         val pending = PendingIntent.getActivity(applicationContext, 0, Intent(applicationContext, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(applicationContext, "reminder").setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("안전실천 도우미 확인 필요").setContentText("기기를 잠금 해제하고 접근성 연결과 실행 설정을 확인하세요.")
+            .setContentTitle("안전실천 출첵 확인 필요").setContentText("기기를 잠금 해제하고 접근성 연결과 실행 설정을 확인하세요.")
             .setContentIntent(pending).setAutoCancel(true).build()
         try { manager.notify(1, notification) } catch (_: SecurityException) { }
         return Result.success()
