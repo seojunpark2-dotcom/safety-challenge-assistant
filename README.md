@@ -4,7 +4,7 @@
 
 ## 다운로드 및 설치
 
-[GitHub Releases에서 APK 받기](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/releases) (저장소 접근 권한이 있는 계정으로 로그인)
+[APK 1.4.0 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/releases/download/v1.4.0/safety-assistant-1.4.0.apk) (저장소 접근 권한이 있는 계정으로 로그인)
 
 APK를 스마트폰으로 옮긴 뒤, 다운로드 또는 파일 앱의 알 수 없는 앱 설치를 허용하고 APK를 엽니다. 진단용 APK는 디버그 키로 서명합니다.
 
