@@ -315,7 +315,6 @@ class MainActivity : ComponentActivity() {
 private fun taskLabel(task: Task) = when (task) {
     Task.ATTENDANCE -> "출석체크"
     Task.QUIZ -> "오늘의 O/X 퀴즈"
-    Task.POINTS -> "보유 포인트 확인"
     Task.ROULETTE -> "룰렛 참여"
 }
 

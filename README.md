@@ -4,8 +4,8 @@
 
 ## 다운로드 및 설치
 
-- [APK 1.5.1 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.1.apk)
-- [ZIP 1.5.1 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.1.zip) — 브라우저에서 APK가 내려받아지지 않으면 ZIP을 받아 압축을 풀고 APK를 설치하세요.
+- [APK 1.5.2 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.2.apk)
+- [ZIP 1.5.2 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.2.zip) — 브라우저에서 APK가 내려받아지지 않으면 ZIP을 받아 압축을 풀고 APK를 설치하세요.
 
 링크를 누르면 GitHub 로그인 없이 파일을 받을 수 있습니다. 이전 버전은 [GitHub 릴리스](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/releases)에서 받을 수 있습니다.
 
@@ -21,7 +21,7 @@ APK를 스마트폰으로 옮긴 뒤, 다운로드 또는 파일 앱의 알 수 
 
 ## 자동 실행
 
-- 출석, 퀴즈, 포인트 확인, 룰렛을 각각 실행하거나 예약 대상에 추가할 수 있습니다.
+- 출석, 퀴즈, 룰렛을 각각 실행하거나 예약 대상에 추가할 수 있습니다.
 - 사진에서 정답이 확인된 크레인 문항은 기존 정답을 사용합니다. 새 문항은 Gemini로 판단합니다. 앱에 관련 공식 자료가 있으면 함께 전달합니다.
 - 룰렛은 잔액과 3,000포인트 버튼, 사용 동의 및 일일 한도를 검사합니다. 마감되거나 비용이 다르면 중단합니다.
 - 출석, 제출, 룰렛 버튼을 누르기 전에 해당 날짜의 시도를 기록합니다. 응답을 읽지 못하거나 앱을 다시 시작해도 같은 날 다시 누르지 않습니다.

@@ -6,7 +6,7 @@ plugins {
 android {
     namespace = "kr.co.safetyassistant"
     compileSdk = 35
-    defaultConfig { applicationId = "kr.co.safetyassistant"; minSdk = 26; targetSdk = 35; versionCode = 9; versionName = "1.5.1" }
+    defaultConfig { applicationId = "kr.co.safetyassistant"; minSdk = 26; targetSdk = 35; versionCode = 10; versionName = "1.5.2" }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

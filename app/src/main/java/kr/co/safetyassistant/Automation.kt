@@ -9,7 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 
 enum class Task(val title: String) {
-    ATTENDANCE("출석"), QUIZ("퀴즈"), POINTS("포인트"), ROULETTE("룰렛")
+    ATTENDANCE("출석"), QUIZ("퀴즈"), ROULETTE("룰렛")
 }
 
 private val costButton = Regex("""(?:3,000|3000)\s*포인트로 룰렛 돌리기""")
@@ -34,7 +34,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries:
         if (task == Task.ATTENDANCE) notifyAttendanceResult(message)
     }
     fun reserve(): Boolean = settings.edit().putBoolean(key, true).commit()
-    if (task != Task.POINTS && settings.getBoolean(key, false)) {
+    if (settings.getBoolean(key, false)) {
         report("오늘 이미 시도함 · 대상 앱에서 결과 확인")
         return
     }
@@ -155,9 +155,9 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries:
                     if (!submitted) scroll(Node.ACTION_SCROLL_FORWARD)
                 }
             }
-            Task.POINTS, Task.ROULETTE -> {
+            Task.ROULETTE -> {
                 if ("금일 응모가 마감되었습니다" in screen) {
-                    if (task == Task.ROULETTE) reserve()
+                    reserve()
                     report("오늘 응모 마감")
                     return
                 }
@@ -166,10 +166,6 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries:
                 }.distinct().toList().singleOrNull()
                 if ("룰렛 참여" in labels && balance != null) {
                     val clickCost = labels.any(costButton::matches)
-                    if (task == Task.POINTS) {
-                        report("%,d포인트".format(balance))
-                        return
-                    }
                     if (submitted) {
                         if ("당첨을 축하" in screen) {
                             report("당첨 확인 · 화면 잔액 %,d포인트".format(balance))
