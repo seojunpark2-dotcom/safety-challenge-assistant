@@ -1,11 +1,11 @@
 # 안전실천 출첵
 
-안전실천 챌린지의 화면을 확인하는 개인용 Android 도우미입니다. 스크린샷에서 확인한 공지, 출석 완료, 퀴즈 참여 완료, 룰렛 잔액과 응모 마감 문구를 접근성 노드에서 찾습니다. 대상 패키지를 지정하고 서비스에서 자동 참여가 허용된 기능을 확인한 후 실행할 수 있습니다.
+안전실천 챌린지의 화면을 확인하는 개인용 Android 도우미입니다. 스크린샷에서 확인한 공지, 출석 완료, 퀴즈 참여 완료, 룰렛 잔액과 응모 마감 문구를 접근성 노드에서 찾습니다. 설치된 안전실천 챌린지를 자동으로 인식합니다. 서비스에서 자동 참여가 허용된 기능을 확인한 후 실행할 수 있습니다.
 
 ## 다운로드 및 설치
 
-- [APK 1.4.2 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.4.2.apk)
-- [ZIP 1.4.2 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.4.2.zip) — 브라우저에서 APK가 내려받아지지 않으면 ZIP을 받아 압축을 풀고 APK를 설치하세요.
+- [APK 1.5.0 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.0.apk)
+- [ZIP 1.5.0 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.0.zip) — 브라우저에서 APK가 내려받아지지 않으면 ZIP을 받아 압축을 풀고 APK를 설치하세요.
 
 링크를 누르면 GitHub 로그인 없이 파일을 받을 수 있습니다. 이전 버전은 [GitHub 릴리스](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/releases)에서 받을 수 있습니다.
 
@@ -13,8 +13,8 @@ APK를 스마트폰으로 옮긴 뒤, 다운로드 또는 파일 앱의 알 수 
 
 ## 화면 진단
 
-1. 대상 앱 패키지명에 `kr.or.kosha.safetychallenge`를 입력합니다. [안전실천 챌린지 Google Play 페이지](https://play.google.com/store/apps/details?id=kr.or.kosha.safetychallenge)의 앱 식별자입니다.
-2. 도우미에 패키지명을 입력하고 저장한 후 Android 접근성 설정에서 안전실천 출첵를 켭니다.
+1. [안전실천 챌린지](https://play.google.com/store/apps/details?id=kr.or.kosha.safetychallenge)를 설치합니다. 출첵 앱에서 자동으로 인식합니다.
+2. 안전실천 출첵 설정에서 접근성 권한을 켭니다. 옵션에서 프라이버시 커튼과 출석 결과 알림을 따로 켤 수 있습니다.
 3. 대상 앱에서 볼 화면을 연 뒤 도우미에서 **최근 화면 진단 결과 보기**를 누릅니다.
 
 대상 앱의 보이는 접근성 문구를 메모리에서 검사하고 판정과 구조를 표시합니다. 이미지에만 있는 버튼과 표시에는 기기 확인이 필요합니다. 3,000포인트 버튼이 표시돼도 실제 응모 가능 여부는 앱에서 확인하세요.

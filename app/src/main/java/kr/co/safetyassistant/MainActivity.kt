@@ -51,7 +51,6 @@ private val SafetyColors = lightColorScheme(
 private enum class Page(val title: String) { HOME("홈"), SETTINGS("설정"), HISTORY("기록") }
 
 class DashboardModel : ViewModel() {
-    var target by mutableStateOf("")
     var structure by mutableStateOf("")
     var history by mutableStateOf("")
 }
@@ -59,10 +58,12 @@ class DashboardModel : ViewModel() {
 class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private var connected by mutableStateOf(false)
+    private var targetInstalled by mutableStateOf(false)
 
     override fun onResume() {
         super.onResume()
         connected = DiagnosticService.instance != null
+        targetInstalled = packageManager.getLaunchIntentForPackage(DiagnosticService.TARGET_PACKAGE) != null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,7 +87,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         var page by rememberSaveable { mutableStateOf(Page.HOME) }
-        var targetSaved by remember { mutableStateOf(prefs.getString("target", "").orEmpty()) }
+        var curtain by remember { mutableStateOf(prefs.getBoolean("privacyCurtain", false)) }
+        var attendanceNotifications by remember { mutableStateOf(prefs.getBoolean("attendanceNotifications", false)) }
         var enabled by remember { mutableStateOf(prefs.getBoolean("enabled", false)) }
         var hour by remember { mutableIntStateOf(prefs.getInt("hour", 9)) }
         var minute by remember { mutableIntStateOf(prefs.getInt("minute", 0)) }
@@ -99,7 +101,6 @@ class MainActivity : ComponentActivity() {
         var apiKey by remember { mutableStateOf("") }
 
         DisposableEffect(prefs) {
-            model.target = targetSaved
             model.history = prefs.getString("history", "").orEmpty()
             val listener = SharedPreferences.OnSharedPreferenceChangeListener { store, key ->
                 if (key == "history") model.history = store.getString(key, "").orEmpty()
@@ -111,7 +112,7 @@ class MainActivity : ComponentActivity() {
         fun run(tasks: List<Task>) {
             when {
                 tasks.isEmpty() -> message = "설정에서 실행할 작업을 선택하세요."
-                !connected || targetSaved.isBlank() || !policy -> {
+                !targetInstalled || !connected || !policy -> {
                     page = Page.SETTINGS
                     message = "대상 앱, 접근성 권한, 자동 참여 허용 여부를 확인하세요."
                 }
@@ -199,20 +200,7 @@ class MainActivity : ComponentActivity() {
                                 OutlinedButton(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
                                     Text("접근성 설정 열기")
                                 }
-                                OutlinedTextField(
-                                    value = model.target, onValueChange = { model.target = it.trim() },
-                                    label = { Text("대상 앱 패키지명") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                                    supportingText = { Text("안전실천 챌린지: kr.or.kosha.safetychallenge") }
-                                )
-                                Button(enabled = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+").matches(model.target), onClick = {
-                                    targetSaved = model.target
-                                    DiagnosticService.targetPackage = model.target
-                                    DiagnosticService.structure = "화면을 확인하지 않았습니다."
-                                    DiagnosticService.lastPackage = model.target
-                                    model.structure = ""
-                                    prefs.edit().putString("target", model.target).apply()
-                                    message = "대상 앱을 저장했어요."
-                                }) { Text("대상 앱 저장") }
+                                Text(if (targetInstalled) "안전실천 챌린지 설치 확인됨" else "Google Play에서 안전실천 챌린지를 설치해 주세요.")
                                 ToggleRow("자동 참여 허용 여부를 확인했어요", policy) {
                                     policy = it
                                     prefs.edit().putBoolean("policyConfirmed", it).apply()
@@ -252,6 +240,25 @@ class MainActivity : ComponentActivity() {
                                     retries = it
                                     prefs.edit().putInt("retries", it.toIntOrNull()?.coerceIn(0, 5) ?: 0).apply()
                                 }
+                            }
+                            Panel("프라이버시 및 알림") {
+                                ToggleRow("프라이버시 커튼", curtain) {
+                                    curtain = it
+                                    prefs.edit().putBoolean("privacyCurtain", it).apply()
+                                    if (!it) DiagnosticService.instance?.removeCurtain()
+                                }
+                                Text("자동화 중 대상 앱을 가립니다. 커튼의 실행 중지 버튼으로 멈출 수 있어요.",
+                                    style = MaterialTheme.typography.bodySmall)
+                                HorizontalDivider()
+                                ToggleRow("출석 결과 알림", attendanceNotifications) {
+                                    attendanceNotifications = it
+                                    prefs.edit().putBoolean("attendanceNotifications", it).apply()
+                                    if (it && Build.VERSION.SDK_INT >= 33) {
+                                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                }
+                                Text("수동·예약 출석의 성공과 실패를 알림으로 확인할 수 있어요.",
+                                    style = MaterialTheme.typography.bodySmall)
                             }
                             Panel("AI 퀴즈") {
                                 Text("새 문항과 관련 참고 자료를 Gemini에 전송합니다.", style = MaterialTheme.typography.bodySmall)

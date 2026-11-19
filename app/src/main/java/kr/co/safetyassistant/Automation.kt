@@ -29,7 +29,10 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries:
     val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
     val runDate = LocalDate.now()
     val key = "attempt.$runDate.$task"
-    fun report(message: String) = log("${task.title}: $message")
+    fun report(message: String) {
+        log("${task.title}: $message")
+        if (task == Task.ATTENDANCE) notifyAttendanceResult(message)
+    }
     fun reserve(): Boolean = settings.edit().putBoolean(key, true).commit()
     if (task != Task.POINTS && settings.getBoolean(key, false)) {
         report("오늘 이미 시도함 · 대상 앱에서 결과 확인")
@@ -45,13 +48,17 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries:
         delay(650)
         if (getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
             !getSystemService(PowerManager::class.java).isInteractive ||
-            LocalDate.now() != runDate || DiagnosticService.targetPackage != pkg || !settings.getBoolean("policyConfirmed", false)
+            LocalDate.now() != runDate || !settings.getBoolean("policyConfirmed", false)
         ) {
             report("잠금 또는 설정 변경으로 중지")
             return
         }
         val root = rootInActiveWindow
-        if (root?.packageName?.toString() != pkg) return@repeat
+        if (root?.packageName?.toString() != pkg) {
+            removeCurtain()
+            return@repeat
+        }
+        showCurtain()
         val nodes = root.nodes().take(500).filter {
             it.isVisibleToUser && !it.isPassword && !it.isEditable
         }.toList()

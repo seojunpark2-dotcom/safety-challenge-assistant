@@ -29,6 +29,10 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
         val launched = withContext(Dispatchers.Main) { DiagnosticService.instance?.start(tasks) == true }
         schedule(applicationContext)
         if (launched) return Result.success()
+        if (Task.ATTENDANCE in tasks && p.getBoolean("attendanceNotifications", false)) {
+            applicationContext.notifyAttendanceResult("예약 출석을 시작하지 못했어요. 잠금 상태와 앱 설정을 확인하세요.")
+            return Result.success()
+        }
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("reminder", "자동화 안내", NotificationManager.IMPORTANCE_DEFAULT))
         val pending = PendingIntent.getActivity(applicationContext, 0, Intent(applicationContext, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
