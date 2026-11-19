@@ -2,6 +2,10 @@ package kr.co.safetyassistant
 
 private val balance = Regex("""내\s*포인트\s*([0-9]+(?:,[0-9]{3})*)(?![0-9,])""")
 
+internal fun rouletteBalance(screen: String): Int? = balance.findAll(screen).mapNotNull {
+    it.groupValues[1].replace(",", "").toIntOrNull()
+}.distinct().toList().singleOrNull()
+
 private val noticeOptOut = Regex("""(?:오늘\s*)?하루\s*(?:동안\s*)?보지\s*않기""")
 private val attendanceSection = Regex("""출석\s*체크""")
 private val attendanceComplete = Regex("""출석\s*체크\s*완료""")
@@ -29,9 +33,7 @@ fun describeScreen(labels: List<String>): String {
         "퀴즈 참여 완료" in text -> "퀴즈: 참여 완료"
         labels.any(::isNoticeOptOut) && "닫기" in labels -> "공지: 닫기 버튼 확인"
         "내 포인트" in text && "룰렛 참여" in text -> {
-            val points = balance.findAll(text).mapNotNull {
-                it.groupValues[1].replace(",", "").toIntOrNull()
-            }.distinct().toList().singleOrNull()
+            val points = rouletteBalance(text)
             when {
                 points == null -> "룰렛: 잔액 확인 필요"
                 points < 3000 -> "룰렛: %,d포인트 · 잔액 부족".format(points)

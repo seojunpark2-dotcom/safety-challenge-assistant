@@ -18,7 +18,6 @@ enum class Task(val title: String) {
 
 private const val ROULETTE_COST_POINTS = 3000
 private val costButton = Regex("""(?:3,000|3000)\s*포인트로 룰렛 돌리기""")
-private val pointsPattern = Regex("""내\s*포인트\s*([0-9][0-9,]*)""")
 private val knownQuestion = "크레인으로 든 물건이 흔들리지 않는다면 그 아래를 잠깐 통과해도 된다."
 
 private fun Node.label() = (text?.toString()?.takeIf(String::isNotBlank) ?: contentDescription?.toString())
@@ -71,7 +70,8 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
         }
         showCurtain()
         val nodes = root.nodes().take(500).filter {
-            it.isVisibleToUser && !it.isPassword && !it.isEditable
+            it.isVisibleToUser && !it.isPassword && !it.isEditable &&
+                !Rect().also(it::getBoundsInScreen).isEmpty
         }.toList()
         val labels = nodes.map { it.label() }
         val screen = labels.joinToString(" ")
@@ -87,10 +87,11 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
         }
         fun exact(label: String) = click({ it == label })
         fun Node.bounds() = Rect().also { getBoundsInScreen(it) }
-        fun tapNoticeControl(control: Node): Boolean {
-            if (settings.getBoolean("privacyCurtain", false) || !control.refresh() || !control.usable() ||
-                rootInActiveWindow?.let { it.packageName?.toString() == pkg && it.windowId == control.windowId } != true ||
-                (serviceInfo.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES) == 0
+        val canTap = !settings.getBoolean("privacyCurtain", false) &&
+            (serviceInfo.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES) != 0
+        fun tapControl(control: Node): Boolean {
+            if (!canTap || !control.refresh() || !control.usable() ||
+                rootInActiveWindow?.let { it.packageName?.toString() == pkg && it.windowId == control.windowId } != true
             ) return false
             val bounds = control.bounds()
             if (!bounds.intersect(root.bounds())) return false
@@ -118,7 +119,17 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                 generateSequence(label) { it.parent }.take(3)
                     .firstOrNull { it.usable() && it.isCheckable }
                     ?: label.parent?.let { row ->
-                        row.nodes().take(24).filter { it.usable() && it.isCheckable }.singleOrNull()
+                        row.nodes().take(24).filter { candidate ->
+                            if (!candidate.usable()) return@filter false
+                            if (candidate.isCheckable) return@filter true
+                            val control = candidate.bounds()
+                            val text = label.bounds()
+                            candidate.className?.toString() == "android.widget.Image" &&
+                                candidate.label().isEmpty() && !control.isEmpty &&
+                                control.height() in (text.height() / 2)..(text.height() * 2) &&
+                                isBesideNoticeLabel(text.left until text.right, text.top until text.bottom,
+                                    control.left until control.right, control.centerY())
+                        }.singleOrNull()
                     }
                     ?: nodes.singleOrNull { candidate ->
                         if (!candidate.usable() || !candidate.isCheckable) return@singleOrNull false
@@ -131,25 +142,38 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                             )
                     }
             }.distinct().singleOrNull()
-            if (checkbox != null && lastClosedCheckbox != null) {
-                if (checkbox == lastClosedCheckbox && checkbox.isChecked) return@repeat
+            val checkboxBounds = checkbox?.bounds()
+            val observedChecked = checkbox?.let {
+                when {
+                    it.isCheckable -> it.isChecked
+                    settings.getBoolean("privacyCurtain", false) -> null
+                    else -> readNoticeImage(it.bounds(), pkg, it.windowId)
+                }
+            }
+            if (observedChecked == null || checkbox == null || !checkbox.refresh() || !closing.refresh() ||
+                !checkbox.usable() || !closing.usable() || closing.label() != "닫기" ||
+                closing.windowId != checkbox.windowId || checkbox.bounds() != checkboxBounds ||
+                rootInActiveWindow?.let { it.packageName?.toString() == pkg && it.windowId == checkbox.windowId } != true
+            ) return@repeat
+            val checked = if (checkbox.isCheckable) checkbox.isChecked else observedChecked
+            if (lastClosedCheckbox != null) {
+                if (checkbox == lastClosedCheckbox && checked) return@repeat
                 noticesClosed++
                 lastClosedCheckbox = null
                 if (noticesClosed >= 2) return@repeat
             }
             val closeTarget = closing.clickTarget()
-            val checkboxTarget = checkbox?.clickTarget()
+            val checkboxTarget = checkbox.clickTarget()
             if (checkboxTarget != null && checkboxTarget == closeTarget) return@repeat
-            if (checkbox?.isChecked == true) {
-                if (closeTarget?.performAction(Node.ACTION_CLICK) == true ||
-                    (checkbox.refresh() && checkbox.isChecked && tapNoticeControl(closing))
-                ) {
+            if (checked) {
+                if (closeTarget?.performAction(Node.ACTION_CLICK) == true || tapControl(closing)) {
                     noticeSelectionRequested = false
                     lastClosedCheckbox = checkbox
                 }
-            } else if (checkbox != null && !noticeSelectionRequested) {
-                noticeSelectionRequested = checkboxTarget?.performAction(Node.ACTION_CLICK) == true ||
-                    tapNoticeControl(checkbox)
+            } else if (!noticeSelectionRequested) {
+                noticeSelectionRequested = (checkbox.isCheckable &&
+                    checkboxTarget?.performAction(Node.ACTION_CLICK) == true) ||
+                    tapControl(checkbox)
             }
             return@repeat
         }
@@ -169,40 +193,28 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                     return
                 }
                 if (!submitted && hasAttendanceSection(screen) && labels.any(::isAttendanceButton)) {
-                    val button = nodes.singleOrNull { it.usable() && isAttendanceButton(it.label()) }
-                    if (button != null) {
-                        val target = button.clickTarget()
-                        val bounds = Rect().also(button::getBoundsInScreen)
-                        val windowBounds = Rect().also(root::getBoundsInScreen)
-                        val canTap = bounds.intersect(windowBounds) &&
-                            !settings.getBoolean("privacyCurtain", false) &&
-                            (serviceInfo.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES) != 0
-                        if ((target != null || canTap) && reserve()) {
-                            submitted = target?.performAction(Node.ACTION_CLICK) == true
-                            if (!submitted && canTap) {
-                                val currentRoot = rootInActiveWindow
-                                val currentNodes = currentRoot?.takeIf { it.packageName?.toString() == pkg }
-                                    ?.nodes()?.take(500)?.filter { it.usable() }?.toList().orEmpty()
-                                val currentScreen = currentNodes.joinToString(" ") { it.label() }
-                                val currentButton = currentNodes.singleOrNull { isAttendanceButton(it.label()) }
-                                if (currentButton != null && currentRoot != null &&
-                                    hasAttendanceSection(currentScreen) && !isAttendanceComplete(currentScreen) &&
-                                    currentNodes.none { isNoticeOptOut(it.label()) }
-                                ) {
-                                    currentButton.getBoundsInScreen(bounds)
-                                    currentRoot.getBoundsInScreen(windowBounds)
-                                    if (!bounds.intersect(windowBounds)) {
-                                        report("체크 버튼 위치가 바뀜 · 결과 확인 필요")
-                                        return
-                                    }
-                                    val path = Path().apply { moveTo(bounds.exactCenterX(), bounds.exactCenterY()) }
-                                    val stroke = GestureDescription.StrokeDescription(path, 0, 80)
-                                    submitted = dispatchGesture(
-                                        GestureDescription.Builder().addStroke(stroke).build(), null, null
-                                    )
-                                }
+                    val label = nodes.singleOrNull { it.usable() && isAttendanceButton(it.label()) }
+                    val target = label?.let { text ->
+                        val area = text.bounds()
+                        val card = text.parent
+                        val button = card?.let {
+                            (0 until it.childCount).mapNotNull(it::getChild).singleOrNull { child ->
+                                val bounds = child.bounds()
+                                child.usable() && child.isClickable && child.label().isEmpty() &&
+                                    child.className?.toString() == "android.widget.Button" &&
+                                    !bounds.isEmpty && bounds.bottom <= area.top &&
+                                    area.centerX() in bounds.left until bounds.right
                             }
                         }
+                        button ?: text.clickTarget()
+                    }
+                    val control = target ?: label?.takeIf { canTap }
+                    if (control != null && control.refresh() && control.usable() &&
+                        rootInActiveWindow?.let {
+                            it.packageName?.toString() == pkg && it.windowId == control.windowId
+                        } == true && reserve()
+                    ) {
+                        submitted = target?.performAction(Node.ACTION_CLICK) == true || tapControl(control)
                     }
                     if (!submitted && settings.getBoolean(key, false)) {
                         report("클릭 결과 확인 필요")
@@ -251,7 +263,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                     if (!selected) {
                         val answer = quizAnswer ?: return
                         selected = click({ isChoice(it, answer) })
-                    } else if (!submitted) {
+                    } else if (!submitted && nodes.any { it.usable() && it.label() == "제출하기" }) {
                         submitted = click({ it == "제출하기" }, ::reserve)
                         if (!submitted && settings.getBoolean(key, false)) {
                             report("제출 결과 확인 필요")
@@ -268,9 +280,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                     report("오늘 응모 마감")
                     return
                 }
-                val balance = pointsPattern.findAll(screen).mapNotNull {
-                    it.groupValues[1].replace(",", "").toIntOrNull()
-                }.distinct().toList().singleOrNull()
+                val balance = rouletteBalance(screen)
                 if ("룰렛 참여" in labels && balance != null) {
                     val clickCost = labels.any(costButton::matches)
                     if (submitted) {
