@@ -95,7 +95,6 @@ class MainActivity : ComponentActivity() {
         var consent by remember { mutableStateOf(prefs.getBoolean("spendConsent", false)) }
         var limit by remember { mutableStateOf(prefs.getInt("spendLimit", 0).toString()) }
         var threshold by remember { mutableStateOf(prefs.getInt("threshold", 3000).toString()) }
-        var retries by remember { mutableStateOf(prefs.getInt("retries", 2).toString()) }
         var scheduled by remember { mutableStateOf(enabledTasks(prefs)) }
         var apiKey by remember { mutableStateOf("") }
 
@@ -229,10 +228,6 @@ class MainActivity : ComponentActivity() {
                                         prefs.edit().putBoolean("auto.$task", it).apply()
                                         scheduled = enabledTasks(prefs)
                                     }
-                                }
-                                NumberField("화면 탐색 재시도 (0–5)", retries) {
-                                    retries = it
-                                    prefs.edit().putInt("retries", it.toIntOrNull()?.coerceIn(0, 5) ?: 0).apply()
                                 }
                             }
                             Panel("프라이버시 및 알림") {

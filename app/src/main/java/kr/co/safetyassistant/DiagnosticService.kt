@@ -45,7 +45,7 @@ class DiagnosticService : AccessibilityService() {
                 log("실행 시작")
                 for (task in tasks) {
                     activeTask = task
-                    runTask(task, pkg, prefs.getInt("retries", 2).coerceIn(0, 5))
+                    runTask(task, pkg)
                 }
             } catch (e: CancellationException) {
                 throw e

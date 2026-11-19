@@ -25,7 +25,9 @@ private fun Node.nodes(depth: Int = 0): Sequence<Node> = sequence {
     for (i in 0 until childCount) getChild(i)?.let { yieldAll(it.nodes(depth + 1)) }
 }
 
-internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries: Int) {
+private const val SCREEN_SEARCH_RETRIES = 2
+
+internal suspend fun DiagnosticService.runTask(task: Task, pkg: String) {
     val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
     val runDate = LocalDate.now()
     val key = "attempt.$runDate.$task"
@@ -44,7 +46,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries:
     var quizAnswer: Char? = null
     var rouletteOpened = false
     var scrolls = 0
-    repeat(12 + retries * 3) {
+    repeat(12 + SCREEN_SEARCH_RETRIES * 3) {
         delay(650)
         if (getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
             !getSystemService(PowerManager::class.java).isInteractive ||

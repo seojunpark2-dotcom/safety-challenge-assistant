@@ -4,8 +4,8 @@
 
 ## 다운로드 및 설치
 
-- [APK 1.5.2 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.2.apk)
-- [ZIP 1.5.2 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.2.zip) — 브라우저에서 APK가 내려받아지지 않으면 ZIP을 받아 압축을 풀고 APK를 설치하세요.
+- [APK 1.5.3 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.3.apk)
+- [ZIP 1.5.3 바로 다운로드](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/raw/refs/heads/apk-download/safety-assistant-1.5.3.zip) — 브라우저에서 APK가 내려받아지지 않으면 ZIP을 받아 압축을 풀고 APK를 설치하세요.
 
 링크를 누르면 GitHub 로그인 없이 파일을 받을 수 있습니다. 이전 버전은 [GitHub 릴리스](https://github.com/seojunpark2-dotcom/safety-challenge-assistant/releases)에서 받을 수 있습니다.
 
