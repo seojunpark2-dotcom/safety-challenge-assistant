@@ -250,22 +250,35 @@ class MainActivity : ComponentActivity() {
                                     style = MaterialTheme.typography.bodySmall)
                             }
                             Panel("AI 퀴즈") {
+                                var keyError by remember { mutableStateOf<String?>(null) }
                                 Text("새 문항과 관련 참고 자료를 Gemini에 전송합니다.", style = MaterialTheme.typography.bodySmall)
                                 OutlinedTextField(
-                                    apiKey, { apiKey = it.trim() }, label = { Text("Gemini API 키") },
+                                    apiKey, { apiKey = it; keyError = null }, label = { Text("Gemini API 키") },
                                     singleLine = true, visualTransformation = PasswordVisualTransformation(),
+                                    isError = keyError != null,
+                                    supportingText = keyError?.let { error -> { Text(error) } },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(enabled = apiKey.matches(Regex("[A-Za-z0-9_-]{20,200}")), onClick = {
-                                        message = runCatching { QuizKey.save(this@MainActivity, apiKey) }
-                                            .fold({ "키를 저장했어요." }, { "키를 저장하지 못했어요." })
-                                        apiKey = ""
+                                    Button(onClick = {
+                                        val value = apiKey.trim()
+                                        if (!value.matches(Regex("[A-Za-z0-9_-]{20,200}"))) {
+                                            keyError = "Gemini API 키를 확인하세요. 영문, 숫자, _, -로 된 20~200자입니다."
+                                        } else {
+                                            runCatching { QuizKey.save(this@MainActivity, value) }
+                                                .onSuccess {
+                                                    apiKey = ""
+                                                    keyError = null
+                                                    message = "키를 저장했어요."
+                                                }
+                                                .onFailure { keyError = "키를 저장하지 못했어요. 다시 시도해 주세요." }
+                                        }
                                     }) { Text("키 저장") }
                                     TextButton(onClick = {
                                         message = runCatching { QuizKey.clear(this@MainActivity) }
                                             .fold({ "키를 삭제했어요." }, { "키를 삭제하지 못했어요." })
                                         apiKey = ""
+                                        keyError = null
                                     }) { Text("키 삭제") }
                                 }
                             }
