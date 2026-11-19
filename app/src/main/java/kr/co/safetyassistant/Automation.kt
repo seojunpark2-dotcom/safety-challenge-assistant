@@ -1,7 +1,11 @@
 package kr.co.safetyassistant
 
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.GestureDescription
 import android.app.KeyguardManager
 import android.content.Context
+import android.graphics.Path
+import android.graphics.Rect
 import android.os.PowerManager
 import android.view.accessibility.AccessibilityNodeInfo as Node
 import java.time.LocalDate
@@ -17,7 +21,7 @@ private val costButton = Regex("""(?:3,000|3000)\s*포인트로 룰렛 돌리기
 private val pointsPattern = Regex("""내\s*포인트\s*([0-9][0-9,]*)""")
 private val knownQuestion = "크레인으로 든 물건이 흔들리지 않는다면 그 아래를 잠깐 통과해도 된다."
 
-private fun Node.label() = (text ?: contentDescription)?.toString()
+private fun Node.label() = (text?.toString()?.takeIf(String::isNotBlank) ?: contentDescription?.toString())
     ?.replace(Regex("\\s+"), " ")?.trim().orEmpty()
 
 private fun Node.nodes(depth: Int = 0): Sequence<Node> = sequence {
@@ -42,6 +46,8 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String) {
         return
     }
     var submitted = false
+    var noticeVisible = false
+    var noticeSelectionRequested = false
     var selected = false
     var solvedQuestion: String? = null
     var quizAnswer: Char? = null
@@ -67,12 +73,14 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String) {
         }.toList()
         val labels = nodes.map { it.label() }
         val screen = labels.joinToString(" ")
+        fun Node.usable() = packageName?.toString() == pkg && isVisibleToUser && isEnabled &&
+            !isPassword && !isEditable
+        fun Node.clickTarget() = generateSequence(this) { it.parent }.take(4).firstOrNull {
+            it.usable() && (it.isClickable || it.actionList.any { action -> action.id == Node.ACTION_CLICK })
+        }
         fun click(test: (String) -> Boolean, before: () -> Boolean = { true }): Boolean {
-            val match = nodes.filter { test(it.label()) }.mapNotNull { node ->
-                generateSequence(node) { it.parent }.take(4).firstOrNull {
-                    it.packageName?.toString() == pkg && it.isVisibleToUser && it.isEnabled && it.isClickable
-                }
-            }.distinct().singleOrNull() ?: return false
+            val match = nodes.filter { test(it.label()) }.mapNotNull { it.clickTarget() }
+                .distinct().singleOrNull() ?: return false
             return before() && match.performAction(Node.ACTION_CLICK)
         }
         fun exact(label: String) = click({ it == label })
@@ -82,24 +90,73 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String) {
                 .singleOrNull() ?: return false
             return target.performAction(action)
         }
-        if ("하루동안 보지 않기" in screen && "닫기" in labels) {
-            exact("닫기")
+        val noticeLabels = nodes.filter { isNoticeOptOut(it.label()) }
+        noticeVisible = noticeLabels.isNotEmpty() && "닫기" in labels
+        if (noticeVisible) {
+            val label = noticeLabels.singleOrNull()?.takeIf { it.usable() } ?: return@repeat
+            val checkbox = generateSequence(label) { it.parent }.take(3)
+                .firstOrNull { it.usable() && it.isCheckable }
+                ?: label.parent?.let { row ->
+                    (0 until row.childCount).mapNotNull(row::getChild)
+                        .singleOrNull { it.usable() && it.isCheckable }
+                }
+            if (checkbox?.isChecked == true) {
+                exact("닫기")
+            } else if (checkbox != null && !noticeSelectionRequested) {
+                noticeSelectionRequested = checkbox.clickTarget()
+                    ?.performAction(Node.ACTION_CLICK) == true
+            }
             return@repeat
         }
+        noticeSelectionRequested = false
         if ("네트워크 오류" in screen || "인터넷 연결을 확인" in screen) {
             report("네트워크 오류")
             return
         }
         when (task) {
             Task.ATTENDANCE -> {
-                if ("출석체크 완료" in screen) {
+                if (isAttendanceComplete(screen)) {
                     exact("확인")
                     reserve()
                     report("완료")
                     return
                 }
-                if (!submitted && "출석체크" in screen && "체크" in labels) {
-                    submitted = click({ it == "체크" }, ::reserve)
+                if (!submitted && hasAttendanceSection(screen) && labels.any(::isAttendanceButton)) {
+                    val button = nodes.singleOrNull { it.usable() && isAttendanceButton(it.label()) }
+                    if (button != null) {
+                        val target = button.clickTarget()
+                        val bounds = Rect().also(button::getBoundsInScreen)
+                        val windowBounds = Rect().also(root::getBoundsInScreen)
+                        val canTap = bounds.intersect(windowBounds) &&
+                            !settings.getBoolean("privacyCurtain", false) &&
+                            (serviceInfo.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES) != 0
+                        if ((target != null || canTap) && reserve()) {
+                            submitted = target?.performAction(Node.ACTION_CLICK) == true
+                            if (!submitted && canTap) {
+                                val currentRoot = rootInActiveWindow
+                                val currentNodes = currentRoot?.takeIf { it.packageName?.toString() == pkg }
+                                    ?.nodes()?.take(500)?.filter { it.usable() }?.toList().orEmpty()
+                                val currentScreen = currentNodes.joinToString(" ") { it.label() }
+                                val currentButton = currentNodes.singleOrNull { isAttendanceButton(it.label()) }
+                                if (currentButton != null && currentRoot != null &&
+                                    hasAttendanceSection(currentScreen) && !isAttendanceComplete(currentScreen) &&
+                                    currentNodes.none { isNoticeOptOut(it.label()) }
+                                ) {
+                                    currentButton.getBoundsInScreen(bounds)
+                                    currentRoot.getBoundsInScreen(windowBounds)
+                                    if (!bounds.intersect(windowBounds)) {
+                                        report("체크 버튼 위치가 바뀜 · 결과 확인 필요")
+                                        return
+                                    }
+                                    val path = Path().apply { moveTo(bounds.exactCenterX(), bounds.exactCenterY()) }
+                                    val stroke = GestureDescription.StrokeDescription(path, 0, 80)
+                                    submitted = dispatchGesture(
+                                        GestureDescription.Builder().addStroke(stroke).build(), null, null
+                                    )
+                                }
+                            }
+                        }
+                    }
                     if (!submitted && settings.getBoolean(key, false)) {
                         report("클릭 결과 확인 필요")
                         return
@@ -197,5 +254,9 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String) {
             }
         }
     }
-    report(if (submitted) "결과 확인 필요 · 오늘 재시도 차단" else "화면 요소 찾기 시간 초과")
+    report(when {
+        submitted -> "결과 확인 필요 · 오늘 재시도 차단"
+        noticeVisible -> "공지 체크 또는 닫기 결과 확인 필요"
+        else -> "화면 요소 찾기 시간 초과"
+    })
 }
