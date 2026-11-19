@@ -2,7 +2,7 @@ package kr.co.safetyassistant
 
 private val balance = Regex("""내\s*포인트\s*([0-9]+(?:,[0-9]{3})*)(?![0-9,])""")
 
-private val noticeOptOut = Regex("""하루\s*동안\s*보지\s*않기""")
+private val noticeOptOut = Regex("""(?:오늘\s*)?하루\s*(?:동안\s*)?보지\s*않기""")
 private val attendanceSection = Regex("""출석\s*체크""")
 private val attendanceComplete = Regex("""출석\s*체크\s*완료""")
 private val attendanceButton = Regex("""체크|출석\s*(?:하기|체크\s*하기)""")

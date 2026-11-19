@@ -32,7 +32,7 @@ private fun Node.nodes(depth: Int = 0): Sequence<Node> = sequence {
 
 private const val SCREEN_SEARCH_RETRIES = 2
 
-internal suspend fun DiagnosticService.runTask(task: Task, pkg: String) {
+internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNoticeBlocked: () -> Unit) {
     val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
     val runDate = LocalDate.now()
     val key = "attempt.$runDate.$task"
@@ -90,21 +90,27 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String) {
                 .singleOrNull() ?: return false
             return target.performAction(action)
         }
-        val noticeLabels = nodes.filter { isNoticeOptOut(it.label()) }
+        val noticeLabels = nodes.filter {
+            it.packageName?.toString() == pkg &&
+                (isNoticeOptOut(it.label()) || isNoticeOptOut(it.contentDescription?.toString()?.trim().orEmpty()))
+        }
         noticeVisible = noticeLabels.isNotEmpty() && "닫기" in labels
         if (noticeVisible) {
-            val label = noticeLabels.singleOrNull()?.takeIf { it.usable() } ?: return@repeat
-            val checkbox = generateSequence(label) { it.parent }.take(3)
-                .firstOrNull { it.usable() && it.isCheckable }
-                ?: label.parent?.let { row ->
-                    (0 until row.childCount).mapNotNull(row::getChild)
-                        .singleOrNull { it.usable() && it.isCheckable }
-                }
+            val checkbox = noticeLabels.mapNotNull { label ->
+                generateSequence(label) { it.parent }.take(3)
+                    .firstOrNull { it.usable() && it.isCheckable }
+                    ?: label.parent?.let { row ->
+                        row.nodes().take(24).filter { it.usable() && it.isCheckable }.singleOrNull()
+                    }
+            }.distinct().singleOrNull()
             if (checkbox?.isChecked == true) {
                 exact("닫기")
             } else if (checkbox != null && !noticeSelectionRequested) {
-                noticeSelectionRequested = checkbox.clickTarget()
-                    ?.performAction(Node.ACTION_CLICK) == true
+                val target = checkbox.clickTarget()
+                val closeTargets = nodes.filter { it.label() == "닫기" }.mapNotNull { it.clickTarget() }
+                if (target != null && target !in closeTargets) {
+                    noticeSelectionRequested = target.performAction(Node.ACTION_CLICK)
+                }
             }
             return@repeat
         }
@@ -254,6 +260,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String) {
             }
         }
     }
+    if (noticeVisible) onNoticeBlocked()
     report(when {
         submitted -> "결과 확인 필요 · 오늘 재시도 차단"
         noticeVisible -> "공지 체크 또는 닫기 결과 확인 필요"
