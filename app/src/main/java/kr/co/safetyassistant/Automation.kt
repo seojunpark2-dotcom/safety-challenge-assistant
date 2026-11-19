@@ -48,9 +48,9 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, retries:
         delay(650)
         if (getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
             !getSystemService(PowerManager::class.java).isInteractive ||
-            LocalDate.now() != runDate || !settings.getBoolean("policyConfirmed", false)
+            LocalDate.now() != runDate
         ) {
-            report("잠금 또는 설정 변경으로 중지")
+            report("잠금 또는 날짜 변경으로 중지")
             return
         }
         val root = rootInActiveWindow

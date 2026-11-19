@@ -37,7 +37,7 @@ class DiagnosticService : AccessibilityService() {
         if (getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
             !getSystemService(PowerManager::class.java).isInteractive) return false
         val pkg = TARGET_PACKAGE
-        if (tasks.isEmpty() || run?.isActive == true || !prefs.getBoolean("policyConfirmed", false)) return false
+        if (tasks.isEmpty() || run?.isActive == true) return false
         val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return false
         run = scope.launch {
             try {

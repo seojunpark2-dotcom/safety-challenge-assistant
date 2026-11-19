@@ -92,7 +92,6 @@ class MainActivity : ComponentActivity() {
         var enabled by remember { mutableStateOf(prefs.getBoolean("enabled", false)) }
         var hour by remember { mutableIntStateOf(prefs.getInt("hour", 9)) }
         var minute by remember { mutableIntStateOf(prefs.getInt("minute", 0)) }
-        var policy by remember { mutableStateOf(prefs.getBoolean("policyConfirmed", false)) }
         var consent by remember { mutableStateOf(prefs.getBoolean("spendConsent", false)) }
         var limit by remember { mutableStateOf(prefs.getInt("spendLimit", 0).toString()) }
         var threshold by remember { mutableStateOf(prefs.getInt("threshold", 3000).toString()) }
@@ -112,9 +111,9 @@ class MainActivity : ComponentActivity() {
         fun run(tasks: List<Task>) {
             when {
                 tasks.isEmpty() -> message = "설정에서 실행할 작업을 선택하세요."
-                !targetInstalled || !connected || !policy -> {
+                !targetInstalled || !connected -> {
                     page = Page.SETTINGS
-                    message = "대상 앱, 접근성 권한, 자동 참여 허용 여부를 확인하세요."
+                    message = "대상 앱 설치와 접근성 권한을 확인하세요."
                 }
                 DiagnosticService.instance?.start(tasks) != true ->
                     message = "잠금 상태나 이미 실행 중인 작업을 확인하세요."
@@ -199,11 +198,6 @@ class MainActivity : ComponentActivity() {
                                 Text(if (connected) "접근성 연결됨" else "접근성 연결 필요", color = if (connected) Green else Blue)
                                 OutlinedButton(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
                                     Text("접근성 설정 열기")
-                                }
-                                Text(if (targetInstalled) "안전실천 챌린지 설치 확인됨" else "Google Play에서 안전실천 챌린지를 설치해 주세요.")
-                                ToggleRow("자동 참여 허용 여부를 확인했어요", policy) {
-                                    policy = it
-                                    prefs.edit().putBoolean("policyConfirmed", it).apply()
                                 }
                                 TextButton(onClick = {
                                     model.structure = "${DiagnosticService.lastPackage}\n${DiagnosticService.structure}"
