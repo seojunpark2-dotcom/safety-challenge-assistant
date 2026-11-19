@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -26,7 +25,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -92,9 +90,6 @@ class MainActivity : ComponentActivity() {
         var enabled by remember { mutableStateOf(prefs.getBoolean("enabled", false)) }
         var hour by remember { mutableIntStateOf(prefs.getInt("hour", 9)) }
         var minute by remember { mutableIntStateOf(prefs.getInt("minute", 0)) }
-        var consent by remember { mutableStateOf(prefs.getBoolean("spendConsent", false)) }
-        var limit by remember { mutableStateOf(prefs.getInt("spendLimit", 0).toString()) }
-        var threshold by remember { mutableStateOf(prefs.getInt("threshold", 3000).toString()) }
         var scheduled by remember { mutableStateOf(enabledTasks(prefs)) }
         var apiKey by remember { mutableStateOf("") }
 
@@ -269,20 +264,6 @@ class MainActivity : ComponentActivity() {
                                     }) { Text("키 삭제") }
                                 }
                             }
-                            Panel("룰렛 포인트") {
-                                ToggleRow("룰렛 3,000포인트 사용 동의", consent) {
-                                    consent = it
-                                    prefs.edit().putBoolean("spendConsent", it).apply()
-                                }
-                                NumberField("일일 사용 한도", limit) {
-                                    limit = it
-                                    prefs.edit().putInt("spendLimit", it.toIntOrNull() ?: 0).apply()
-                                }
-                                NumberField("룰렛 기준 포인트", threshold) {
-                                    threshold = it
-                                    prefs.edit().putInt("threshold", it.toIntOrNull() ?: Int.MAX_VALUE).apply()
-                                }
-                            }
                         }
                         Page.HISTORY -> {
                             PageHeading("실행 기록")
@@ -341,13 +322,4 @@ private fun ToggleRow(label: String, checked: Boolean, change: (Boolean) -> Unit
         Text(label, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = change)
     }
-}
-
-@Composable
-private fun NumberField(label: String, value: String, change: (String) -> Unit) {
-    OutlinedTextField(
-        value, { if (it.all { digit -> digit in '0'..'9' } && it.length <= 10) change(it) },
-        modifier = Modifier.fillMaxWidth(), label = { Text(label) }, singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-    )
 }

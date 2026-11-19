@@ -12,6 +12,7 @@ enum class Task(val title: String) {
     ATTENDANCE("출석"), QUIZ("퀴즈"), ROULETTE("룰렛")
 }
 
+private const val ROULETTE_COST_POINTS = 3000
 private val costButton = Regex("""(?:3,000|3000)\s*포인트로 룰렛 돌리기""")
 private val pointsPattern = Regex("""내\s*포인트\s*([0-9][0-9,]*)""")
 private val knownQuestion = "크레인으로 든 물건이 흔들리지 않는다면 그 아래를 잠깐 통과해도 된다."
@@ -179,14 +180,8 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String) {
                         report("룰렛 비용 또는 참여 상태 확인 필요")
                         return
                     }
-                    if (balance < settings.getInt("threshold", 3000).coerceAtLeast(3000)) {
+                    if (balance < ROULETTE_COST_POINTS) {
                         report("잔액 부족 · %,d포인트".format(balance))
-                        return
-                    }
-                    if (!settings.getBoolean("spendConsent", false) ||
-                        settings.getInt("spendLimit", 0) < 3000
-                    ) {
-                        report("3,000포인트 사용 동의와 일일 한도 필요")
                         return
                     }
                     submitted = click(costButton::matches, ::reserve)
