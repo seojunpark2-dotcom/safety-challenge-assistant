@@ -1,9 +1,21 @@
 package kr.co.safetyassistant
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScreenTest {
+    @Test fun matchesOnlyCheckboxesBesideTheNoticeLabel() {
+        val labelX = 100..270
+        val labelY = 200..219
+        assertTrue(isBesideNoticeLabel(labelX, labelY, 75..99, 210))
+        assertTrue(isBesideNoticeLabel(labelX, labelY, 271..295, 210))
+        assertFalse(isBesideNoticeLabel(labelX, labelY, 75..99, 240))
+        assertFalse(isBesideNoticeLabel(labelX, labelY, 330..355, 210))
+        assertFalse(isBesideNoticeLabel(labelX, labelY, 98..110, 210))
+    }
+
     @Test fun recognizesTheNoticeLabelShownOnThePhone() {
         assertEquals("공지: 닫기 버튼 확인", describeScreen(listOf("오늘 하루 보지 않기", "닫기")))
         assertEquals("공지: 닫기 버튼 확인", describeScreen(listOf("오늘하루보지않기", "닫기")))

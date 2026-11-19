@@ -8,6 +8,14 @@ private val attendanceComplete = Regex("""출석\s*체크\s*완료""")
 private val attendanceButton = Regex("""체크|출석\s*(?:하기|체크\s*하기)""")
 
 internal fun isNoticeOptOut(label: String) = noticeOptOut.matches(label)
+
+internal fun isBesideNoticeLabel(labelX: IntRange, labelY: IntRange, checkboxX: IntRange, checkboxY: Int): Boolean {
+    val margin = (labelY.last - labelY.first + 1) * 2
+    return checkboxY in labelY &&
+        (checkboxX.last in (labelX.first - margin) until labelX.first ||
+            checkboxX.first in (labelX.last + 1)..(labelX.last + margin))
+}
+
 internal fun hasAttendanceSection(screen: String) = attendanceSection.containsMatchIn(screen)
 internal fun isAttendanceComplete(screen: String) = attendanceComplete.containsMatchIn(screen)
 internal fun isAttendanceButton(label: String) = attendanceButton.matches(label)

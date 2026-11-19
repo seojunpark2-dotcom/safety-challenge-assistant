@@ -48,6 +48,8 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
     var submitted = false
     var noticeVisible = false
     var noticeSelectionRequested = false
+    var noticesClosed = 0
+    var lastClosedCheckbox: Node? = null
     var selected = false
     var solvedQuestion: String? = null
     var quizAnswer: Char? = null
@@ -84,6 +86,18 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
             return before() && match.performAction(Node.ACTION_CLICK)
         }
         fun exact(label: String) = click({ it == label })
+        fun Node.bounds() = Rect().also { getBoundsInScreen(it) }
+        fun tapNoticeControl(control: Node): Boolean {
+            if (settings.getBoolean("privacyCurtain", false) || !control.refresh() || !control.usable() ||
+                rootInActiveWindow?.let { it.packageName?.toString() == pkg && it.windowId == control.windowId } != true ||
+                (serviceInfo.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES) == 0
+            ) return false
+            val bounds = control.bounds()
+            if (!bounds.intersect(root.bounds())) return false
+            val path = Path().apply { moveTo(bounds.exactCenterX(), bounds.exactCenterY()) }
+            val stroke = GestureDescription.StrokeDescription(path, 0, 80)
+            return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        }
         fun scroll(action: Int): Boolean {
             if (scrolls++ >= 7) return false
             val target = nodes.filter { n -> n.actionList.any { it.id == action } }
@@ -94,27 +108,54 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
             it.packageName?.toString() == pkg &&
                 (isNoticeOptOut(it.label()) || isNoticeOptOut(it.contentDescription?.toString()?.trim().orEmpty()))
         }
-        noticeVisible = noticeLabels.isNotEmpty() && "닫기" in labels
+        noticeVisible = noticeLabels.isNotEmpty()
         if (noticeVisible) {
+            if (noticesClosed >= 2) return@repeat
+            val closing = nodes.filter { it.usable() && it.label() == "닫기" }
+                .filter { close -> noticeLabels.any { close.bounds().centerY() > it.bounds().centerY() } }
+                .distinct().singleOrNull() ?: return@repeat
             val checkbox = noticeLabels.mapNotNull { label ->
                 generateSequence(label) { it.parent }.take(3)
                     .firstOrNull { it.usable() && it.isCheckable }
                     ?: label.parent?.let { row ->
                         row.nodes().take(24).filter { it.usable() && it.isCheckable }.singleOrNull()
                     }
+                    ?: nodes.singleOrNull { candidate ->
+                        if (!candidate.usable() || !candidate.isCheckable) return@singleOrNull false
+                        val control = candidate.bounds()
+                        val text = label.bounds()
+                        !control.isEmpty && !text.isEmpty &&
+                            isBesideNoticeLabel(
+                                text.left until text.right, text.top until text.bottom,
+                                control.left until control.right, control.centerY()
+                            )
+                    }
             }.distinct().singleOrNull()
+            if (checkbox != null && lastClosedCheckbox != null) {
+                if (checkbox == lastClosedCheckbox && checkbox.isChecked) return@repeat
+                noticesClosed++
+                lastClosedCheckbox = null
+                if (noticesClosed >= 2) return@repeat
+            }
+            val closeTarget = closing.clickTarget()
+            val checkboxTarget = checkbox?.clickTarget()
+            if (checkboxTarget != null && checkboxTarget == closeTarget) return@repeat
             if (checkbox?.isChecked == true) {
-                exact("닫기")
-            } else if (checkbox != null && !noticeSelectionRequested) {
-                val target = checkbox.clickTarget()
-                val closeTargets = nodes.filter { it.label() == "닫기" }.mapNotNull { it.clickTarget() }
-                if (target != null && target !in closeTargets) {
-                    noticeSelectionRequested = target.performAction(Node.ACTION_CLICK)
+                if (closeTarget?.performAction(Node.ACTION_CLICK) == true ||
+                    (checkbox.refresh() && checkbox.isChecked && tapNoticeControl(closing))
+                ) {
+                    noticeSelectionRequested = false
+                    lastClosedCheckbox = checkbox
                 }
+            } else if (checkbox != null && !noticeSelectionRequested) {
+                noticeSelectionRequested = checkboxTarget?.performAction(Node.ACTION_CLICK) == true ||
+                    tapNoticeControl(checkbox)
             }
             return@repeat
         }
         noticeSelectionRequested = false
+        if (lastClosedCheckbox != null) noticesClosed++
+        lastClosedCheckbox = null
         if ("네트워크 오류" in screen || "인터넷 연결을 확인" in screen) {
             report("네트워크 오류")
             return
