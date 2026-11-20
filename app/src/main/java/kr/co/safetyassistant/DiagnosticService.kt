@@ -94,7 +94,7 @@ class DiagnosticService : AccessibilityService() {
                 startActivity(launch)
                 opened = true
                 log("실행 시작")
-                for (task in tasks) {
+                for (task in Task.entries.filter { it in tasks }) {
                     activeTask = task
                     runTask(task, TARGET_PACKAGE) { noticeBlocked = true }
                     if (noticeBlocked) break

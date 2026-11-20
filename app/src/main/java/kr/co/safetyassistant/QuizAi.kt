@@ -13,10 +13,11 @@ private val yes = setOf("맞아요", "O 맞아요", "○ 맞아요", "⭕ 맞아
 private val no = setOf("틀려요", "X 틀려요", "× 틀려요", "❌ 틀려요")
 internal fun isChoice(label: String, answer: Char) = label in if (answer == 'O') yes else no
 
-internal fun quizQuestion(labels: List<String>): String? {
+internal fun quizQuestion(labels: List<String>, previouslyRead: String? = null): String? {
     val title = labels.indexOf("오늘의 퀴즈")
+    if (title < 0) return previouslyRead?.takeIf { it in labels }
     val end = labels.indexOfFirst { it in yes || it in no }
-    if (title < 0 || end <= title || labels.none { it in yes } || labels.none { it in no }) return null
+    if (end <= title || labels.none { it in yes } || labels.none { it in no }) return null
     return labels.subList(title + 1, end).filter(String::isNotBlank).distinct()
         .singleOrNull()?.takeIf { it.length in 15..400 }
 }

@@ -1,6 +1,7 @@
 package kr.co.safetyassistant
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
 import android.accessibilityservice.GestureDescription
 import android.app.KeyguardManager
 import android.content.Context
@@ -57,10 +58,6 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
         if (task == Task.ATTENDANCE) notifyAttendanceResult(message)
     }
     fun reserve(): Boolean = settings.edit().putBoolean(key, true).commit()
-    if (attempted && task != Task.ROULETTE) {
-        report("오늘 이미 시도함 · 대상 앱에서 결과 확인")
-        return
-    }
     var submitted = false
     var noticeVisible = false
     var noticeSelectionRequested = false
@@ -69,6 +66,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
     var selected = false
     var solvedQuestion: String? = null
     var quizAnswer: Char? = null
+    var completionConfirmationRequested = false
     var rouletteOpened = false
     var rouletteOpenedAt = 0L
     var rouletteBefore = emptySet<String>()
@@ -77,6 +75,8 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
     var scrolls = 0
     var nextScrollAt = 0L
     var nextAttendanceReadAt = 0L
+    var nextHomeBackAt = 0L
+    var homeBacks = 0
     repeat(SCREEN_SEARCH_POLLS) { poll ->
         if (poll > 0) delay(SCREEN_POLL_MS)
         if (getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
@@ -103,12 +103,6 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
         fun Node.clickTarget() = generateSequence(this) { it.parent }.take(4).firstOrNull {
             it.usable() && (it.isClickable || it.actionList.any { action -> action.id == Node.ACTION_CLICK })
         }
-        fun click(test: (String) -> Boolean, before: () -> Boolean = { true }): Boolean {
-            val match = nodes.filter { test(it.label()) }.mapNotNull { it.clickTarget() }
-                .distinct().singleOrNull() ?: return false
-            return before() && match.performAction(Node.ACTION_CLICK)
-        }
-        fun exact(label: String) = click({ it == label })
         fun Node.bounds() = Rect().also { getBoundsInScreen(it) }
         val canTap = !settings.getBoolean("privacyCurtain", false) &&
             (serviceInfo.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES) != 0
@@ -122,13 +116,27 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
             val stroke = GestureDescription.StrokeDescription(path, 0, 80)
             return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
         }
-        fun confirm() = exact("확인") ||
-            (nodes.singleOrNull { it.usable() && it.label() == "확인" }?.let(::tapControl) == true)
+        fun click(test: (String) -> Boolean, allowTap: Boolean = false, before: () -> Boolean = { true }): Boolean {
+            val matches = nodes.filter { it.usable() && test(it.label()) }
+            val targets = matches.mapNotNull { it.clickTarget() }.distinct()
+            if (targets.size > 1) return false
+            val target = targets.singleOrNull()
+            val tapLabel = matches.singleOrNull()?.takeIf { allowTap && canTap }
+            val control = target ?: tapLabel ?: return false
+            if (!control.refresh() || !control.usable() ||
+                rootInActiveWindow?.let { it.packageName?.toString() == pkg && it.windowId == control.windowId } != true ||
+                !before()
+            ) return false
+            return target?.performAction(Node.ACTION_CLICK) == true ||
+                (tapLabel != null && tapLabel.refresh() && test(tapLabel.label()) && tapControl(tapLabel))
+        }
+        fun confirm() = click({ it == "확인" }, allowTap = true)
         fun scroll(action: Int, longSwipe: Boolean = false): Boolean {
             val now = SystemClock.elapsedRealtime()
             if (scrolls >= 7 || now < nextScrollAt) return false
-            val target = nodes.filter { n -> n.usable() && n.actionList.any { it.id == action } }
-                .singleOrNull() ?: return false
+            val candidates = nodes.filter { n -> n.usable() && n.actionList.any { it.id == action } }
+            val target = candidates.maxByOrNull { it.bounds().let { b -> b.width().toLong() * b.height() } }
+                ?: return false
             scrolls++
             nextScrollAt = now + SCROLL_SETTLE_MS
             val bounds = target.bounds()
@@ -246,10 +254,35 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
             report("네트워크 오류")
             return
         }
+        val homeVisible = hasAttendanceSection(screen) || "이번 주차 챌린지" in screen || "오늘의 퀴즈" in screen
+        if (completionConfirmationRequested) {
+            if ("확인" in labels) return@repeat
+            reserve()
+            report(if (task == Task.ATTENDANCE) "완료" else "참여 완료")
+            return
+        }
+        if (task != Task.ROULETTE && !homeVisible &&
+            ("룰렛 참여" in labels || labels.any(costButton::matches) || isRouletteAlreadyPlayed(screen))
+        ) {
+            val now = SystemClock.elapsedRealtime()
+            if (homeBacks < 2 && now >= nextHomeBackAt) {
+                if (!(isRouletteAlreadyPlayed(screen) && confirm()) &&
+                    rootInActiveWindow?.let { it.packageName?.toString() == pkg && it.windowId == root.windowId } == true
+                ) {
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                }
+                homeBacks++
+                nextHomeBackAt = now + SCROLL_SETTLE_MS
+            }
+            return@repeat
+        }
         when (task) {
             Task.ATTENDANCE -> {
                 if (isAttendanceComplete(screen)) {
-                    exact("확인")
+                    if ("확인" in labels) {
+                        completionConfirmationRequested = confirm()
+                        return@repeat
+                    }
                     reserve()
                     report("완료")
                     return
@@ -288,6 +321,10 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                     }
                 }
                 if (!submitted && hasAttendanceSection(screen) && labels.any(::isAttendanceButton)) {
+                    if (attempted) {
+                        report("오늘 요청한 출석 결과를 확인할 수 없음")
+                        return
+                    }
                     val label = nodes.singleOrNull { it.usable() && isAttendanceButton(it.label()) }
                     val target = label?.let { text ->
                         val area = text.bounds()
@@ -312,25 +349,33 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                         submitted = target?.performAction(Node.ACTION_CLICK) == true || tapControl(control)
                     }
                     if (!submitted && settings.getBoolean(key, false)) {
+                        settings.edit().remove(key).commit()
                         report("클릭 결과 확인 필요")
                         return
                     }
-                } else if (!submitted && "오늘의 퀴즈" in screen) {
+                } else if (!submitted && homeVisible) {
                     scroll(Node.ACTION_SCROLL_BACKWARD)
                 }
             }
             Task.QUIZ -> {
                 if (isQuizComplete(labels)) {
-                    if ("오늘의 퀴즈 정답" in screen) exact("확인")
+                    if ("오늘의 퀴즈 정답" in screen && "확인" in labels) {
+                        completionConfirmationRequested = confirm()
+                        return@repeat
+                    }
                     reserve()
                     report("참여 완료")
                     return
                 }
-                if ("오늘의 퀴즈" in screen && "제출하기" in labels) {
-                    if (submitted) return@repeat
-                    val question = quizQuestion(labels)
-                    if (question == null || (solvedQuestion != null && question != solvedQuestion)) {
-                        report("문장 전체를 확인할 수 없거나 문항이 바뀜 · 수동 확인 필요")
+                if (submitted) return@repeat
+                val question = quizQuestion(labels, solvedQuestion)
+                if (question != null) {
+                    if (attempted) {
+                        report("오늘 제출한 퀴즈 결과를 확인할 수 없음")
+                        return
+                    }
+                    if (solvedQuestion != null && question != solvedQuestion) {
+                        report("문항이 바뀜 · 수동 확인 필요")
                         return
                     }
                     if (solvedQuestion == null) {
@@ -357,16 +402,21 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                     }
                     if (!selected) {
                         val answer = quizAnswer ?: return
-                        selected = click({ isChoice(it, answer) })
+                        selected = click({ isChoice(it, answer) }, allowTap = true)
                     } else if (!submitted && nodes.any { it.usable() && it.label() == "제출하기" }) {
-                        submitted = click({ it == "제출하기" }, ::reserve)
+                        submitted = click({ it == "제출하기" }, allowTap = true, before = ::reserve)
                         if (!submitted && settings.getBoolean(key, false)) {
+                            settings.edit().remove(key).commit()
                             report("제출 결과 확인 필요")
                             return
                         }
-                    }
-                } else if (hasAttendanceSection(screen) || "이번 주차 챌린지" in screen || "오늘의 퀴즈" in screen) {
-                    if (!submitted) scroll(Node.ACTION_SCROLL_FORWARD, longSwipe = true)
+                    } else if ("제출하기" !in labels) scroll(Node.ACTION_SCROLL_FORWARD)
+                } else if ("오늘의 퀴즈" !in labels && labels.any { isChoice(it, 'O') } &&
+                    labels.any { isChoice(it, 'X') }
+                ) {
+                    scroll(Node.ACTION_SCROLL_BACKWARD)
+                } else if (homeVisible) {
+                    scroll(Node.ACTION_SCROLL_FORWARD, longSwipe = true)
                 }
             }
             Task.ROULETTE -> {
@@ -393,7 +443,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                         return
                     }
                     rouletteBefore = labels.toSet()
-                    submitted = click(costButton::matches, ::reserve)
+                    submitted = click(costButton::matches, before = ::reserve)
                     if (!submitted && settings.getBoolean(key, false)) {
                         report("룰렛 요청 결과 확인 필요")
                         return
@@ -411,6 +461,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
     }
     if (noticeVisible) onNoticeBlocked()
     report(when {
+        completionConfirmationRequested -> "완료 확인 창이 닫히지 않음"
         rouletteConfirmationRequested -> "확인 요청 후 결과 창 닫힘을 확인하지 못함"
         rouletteInlineResult != null -> rouletteInlineResult.orEmpty()
         submitted -> "결과 확인 필요 · 오늘 재시도 차단"

@@ -7,6 +7,13 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ScreenTest {
+    @Test fun retainsTheVerifiedQuizQuestionWhenScrollingClipsItsHeading() {
+        val question = "쌓인 물건이 불안정해 보이면 먼저 무너지지 않도록 조치해야 한다."
+        assertEquals(question, quizQuestion(listOf(question, "제출하기"), question))
+        assertNull(quizQuestion(listOf("제출하기"), question))
+        assertNull(quizQuestion(listOf("오늘의 퀴즈", question, "제출하기"), question))
+    }
+
     @Test fun distinguishesCompletedAttendanceFromAnEmptyCalendarSlot() {
         val white = 0xffffffff.toInt()
         val green = 0xff91dc46.toInt()
