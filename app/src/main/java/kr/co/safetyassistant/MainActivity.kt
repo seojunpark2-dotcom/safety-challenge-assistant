@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,11 +62,16 @@ class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private var connected by mutableStateOf(false)
     private var targetInstalled by mutableStateOf(false)
+    private var exactAlarmAllowed by mutableStateOf(false)
 
     override fun onResume() {
         super.onResume()
         connected = DiagnosticService.instance != null
         targetInstalled = packageManager.getLaunchIntentForPackage(DiagnosticService.TARGET_PACKAGE) != null
+        exactAlarmAllowed = canScheduleExact()
+        if (!exactAlarmAllowed && getSharedPreferences("settings", MODE_PRIVATE).getBoolean("enabled", false)) {
+            schedule(this, keepFallback = true)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -220,12 +226,22 @@ class MainActivity : ComponentActivity() {
                                         schedule(this@MainActivity)
                                     }, hour, minute, true).show()
                                 }) { Text("실행 시간 %02d:%02d".format(hour, minute)) }
+                                if (enabled && !exactAlarmAllowed && Build.VERSION.SDK_INT >= 31) {
+                                    Text("지정 시각에 실행하려면 정확한 알람을 허용하세요. 권한이 없으면 예약이 늦어질 수 있어요.",
+                                        style = MaterialTheme.typography.bodySmall)
+                                    OutlinedButton(onClick = {
+                                        startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                            Uri.fromParts("package", packageName, null)))
+                                    }) { Text("정확한 알람 허용") }
+                                }
                                 Text("예약 시 화면을 켤 수 있어요. 보안 잠금이 걸려 있으면 직접 해제해야 이어서 실행돼요.",
                                     style = MaterialTheme.typography.bodySmall)
                                 HorizontalDivider()
                                 Task.entries.forEach { task ->
                                     ToggleRow(taskLabel(task), task in scheduled) {
-                                        prefs.edit().putBoolean("auto.$task", it).apply()
+                                        prefs.edit()
+                                            .putBoolean("auto.${Task.ATTENDANCE}", Task.ATTENDANCE in scheduled)
+                                            .putBoolean("auto.$task", it).apply()
                                         scheduled = enabledTasks(prefs)
                                     }
                                 }

@@ -1,11 +1,14 @@
 package kr.co.safetyassistant
 
+import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.core.app.NotificationCompat
@@ -14,29 +17,69 @@ import androidx.work.WorkerParameters
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
+import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
-fun enabledTasks(prefs: SharedPreferences) = Task.entries.filter {
-    prefs.getBoolean("auto.$it", false)
+fun enabledTasks(prefs: SharedPreferences): List<Task> {
+    val hasSavedTasks = Task.entries.any { prefs.contains("auto.$it") }
+    return Task.entries.filter { prefs.getBoolean("auto.$it", !hasSavedTasks && it == Task.ATTENDANCE) }
 }
 
-class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
-        val p = applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)
-        if (!p.getBoolean("enabled", false)) return Result.success()
-        val tasks = enabledTasks(p)
-        val launched = withContext(Dispatchers.Main) { DiagnosticService.instance?.start(tasks, scheduled = true) == true }
-        schedule(applicationContext, append = true)
-        if (launched) return Result.success()
-        if (Task.ATTENDANCE in tasks && p.getBoolean("attendanceNotifications", false)) {
-            applicationContext.notifyAttendanceResult("예약 출석을 시작하지 못했어요. 대상 앱 설치와 접근성 설정을 확인하세요.")
-            return Result.success()
-        }
-        applicationContext.notifyAutomationStatus("접근성 연결과 실행 설정을 확인하세요.")
-        return Result.success()
+class ReminderReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val keepFallback = intent.action == RUN_ALARM && !runScheduledTasks(context)
+        schedule(context, keepFallback = keepFallback)
     }
 }
+
+private const val RUN_ALARM = "kr.co.safetyassistant.RUN_ALARM"
+
+class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result = withContext(Dispatchers.Main) {
+        val prefs = applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("enabled", false)) return@withContext Result.success()
+        val started = runScheduledTasks(applicationContext)
+        if (!started && enabledTasks(prefs).isNotEmpty() && runAttemptCount == 0) {
+            return@withContext Result.retry()
+        }
+        schedule(applicationContext, append = true)
+        Result.success()
+    }
+}
+
+private fun runScheduledTasks(context: Context): Boolean {
+    val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    if (!prefs.getBoolean("enabled", false)) return false
+    val today = LocalDate.now().toString()
+    if (prefs.getString("lastScheduledStart", null) == today) return true
+    val tasks = enabledTasks(prefs)
+    if (DiagnosticService.instance?.start(tasks, scheduled = true) == true) {
+        prefs.edit().putString("lastScheduledStart", today).apply()
+        return true
+    }
+    val message = if (tasks.isEmpty()) "예약 실행 실패 · 선택한 작업이 없어요."
+        else "예약 실행을 시작하지 못했어요. 접근성 연결, 대상 앱 설치, 실행 중인 작업을 확인하세요."
+    context.recordHistory(message)
+    if (Task.ATTENDANCE in tasks && prefs.getBoolean("attendanceNotifications", false)) {
+        context.notifyAttendanceResult(message)
+    } else {
+        context.notifyAutomationStatus(message)
+    }
+    return false
+}
+
+internal fun Context.recordHistory(message: String) {
+    val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+    val row = "${LocalDateTime.now().withNano(0)} · $message"
+    val previous = prefs.getString("history", "").orEmpty()
+    prefs.edit().putString("history", (listOf(row) + previous.lines()).take(30).joinToString("\n")).apply()
+}
+
+internal fun Context.canScheduleExact() = Build.VERSION.SDK_INT < 31 ||
+    getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
 
 internal fun Context.notifyAutomationStatus(message: String) {
     val manager = getSystemService(NotificationManager::class.java)
@@ -48,12 +91,36 @@ internal fun Context.notifyAutomationStatus(message: String) {
     try { manager.notify(1, notification) } catch (_: SecurityException) { }
 }
 
-fun schedule(context: Context, append: Boolean = false) {
+fun schedule(context: Context, append: Boolean = false, keepFallback: Boolean = false) {
     val p = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     val manager = WorkManager.getInstance(context)
-    if (!p.getBoolean("enabled", false)) { manager.cancelUniqueWork("daily"); return }
-    val delay = delayUntilNextRun(LocalDateTime.now(), p.getInt("hour", 9), p.getInt("minute", 0)).toMillis()
+    val alarms = context.getSystemService(AlarmManager::class.java)
+    val pending = PendingIntent.getBroadcast(context, 0, Intent(context, ReminderReceiver::class.java)
+        .setAction(RUN_ALARM), PendingIntent.FLAG_IMMUTABLE)
+    if (!p.getBoolean("enabled", false)) {
+        alarms.cancel(pending)
+        manager.cancelUniqueWork("daily")
+        return
+    }
+    val now = ZonedDateTime.now()
+    val next = nextScheduledRun(now, p.getInt("hour", 9), p.getInt("minute", 0))
+    val exactRegistered = if (context.canScheduleExact()) {
+        try {
+            alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.toInstant().toEpochMilli(), pending)
+            true
+        } catch (_: SecurityException) {
+            // The user can revoke exact alarm access between the check and registration.
+            false
+        }
+    } else false
+    if (!exactRegistered) alarms.cancel(pending)
+    // Keep WorkManager scheduled because revocation removes exact alarms without warning.
+    val delay = Duration.between(now, next).toMillis()
     val request = OneTimeWorkRequestBuilder<ReminderWorker>().setInitialDelay(delay, TimeUnit.MILLISECONDS).build()
-    val policy = if (append) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.REPLACE
+    val policy = when {
+        append -> ExistingWorkPolicy.APPEND_OR_REPLACE
+        keepFallback -> ExistingWorkPolicy.KEEP
+        else -> ExistingWorkPolicy.REPLACE
+    }
     manager.enqueueUniqueWork("daily", policy, request)
 }

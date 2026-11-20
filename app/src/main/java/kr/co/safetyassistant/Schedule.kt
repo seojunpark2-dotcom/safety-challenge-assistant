@@ -1,11 +1,11 @@
 package kr.co.safetyassistant
 
-import java.time.LocalDateTime
-import java.time.Duration
+import java.time.LocalTime
+import java.time.ZonedDateTime
 
-fun delayUntilNextRun(now: LocalDateTime, hour: Int, minute: Int): Duration {
-    require(hour in 0..23 && minute in 0..59)
-    var next = now.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
-    if (!next.isAfter(now)) next = next.plusDays(1)
-    return Duration.between(now, next)
+fun nextScheduledRun(now: ZonedDateTime, hour: Int, minute: Int): ZonedDateTime {
+    val time = LocalTime.of(hour, minute)
+    val today = now.toLocalDate()
+    val next = today.atTime(time).atZone(now.zone)
+    return if (next.isAfter(now)) next else today.plusDays(1).atTime(time).atZone(now.zone)
 }

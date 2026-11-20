@@ -14,7 +14,6 @@ import android.graphics.PixelFormat
 import android.view.View
 import android.view.WindowManager
 import kotlinx.coroutines.*
-import java.time.LocalDateTime
 
 class DiagnosticService : AccessibilityService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -23,12 +22,7 @@ class DiagnosticService : AccessibilityService() {
         instance = this
     }
 
-    fun log(message: String) {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val row = "${LocalDateTime.now().withNano(0)} · $message"
-        val previous = prefs.getString("history", "").orEmpty()
-        prefs.edit().putString("history", (listOf(row) + previous.lines()).take(30).joinToString("\n")).apply()
-    }
+    fun log(message: String) = recordHistory(message)
 
     private var wakeId = 0L
     private var wakeResult: CompletableDeferred<Boolean>? = null
