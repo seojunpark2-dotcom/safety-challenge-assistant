@@ -11,12 +11,8 @@ import android.os.Build
 import android.os.SystemClock
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
 import kotlinx.coroutines.*
 import java.time.LocalDateTime
 
@@ -146,27 +142,29 @@ class DiagnosticService : AccessibilityService() {
     internal fun showCurtain() {
         if (curtain != null || !getSharedPreferences("settings", Context.MODE_PRIVATE)
                 .getBoolean("privacyCurtain", false)) return
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            isClickable = true
-            setBackgroundColor(Color.rgb(13, 40, 51))
-            addView(TextView(context).apply {
-                text = "프라이버시 커튼"
-                textSize = 22f
-                setTextColor(Color.WHITE)
-            })
-            addView(Button(context).apply {
-                text = "실행 중지"
-                setOnClickListener { stop() }
-            })
+        val panel = View(this).apply {
+            setBackgroundColor(Color.BLACK)
+            contentDescription = "프라이버시 커튼. 실행 중지"
+            setOnClickListener { stop() }
         }
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.OPAQUE
-        )
+        ).apply {
+            screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_OFF
+            buttonBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_OFF
+            if (Build.VERSION.SDK_INT >= 30) {
+                setFitInsetsTypes(0)
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else if (Build.VERSION.SDK_INT >= 28) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
         runCatching { windows.addView(panel, params) }
             .onSuccess { curtain = panel }
             .onFailure { log("프라이버시 커튼을 표시하지 못했어요.") }

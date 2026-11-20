@@ -236,7 +236,7 @@ class MainActivity : ComponentActivity() {
                                     prefs.edit().putBoolean("privacyCurtain", it).apply()
                                     if (!it) DiagnosticService.instance?.removeCurtain()
                                 }
-                                Text("자동화 중 대상 앱을 가립니다. 커튼의 실행 중지 버튼으로 멈출 수 있어요.",
+                                Text("자동화 중 화면을 검게 가리고 밝기를 낮춥니다. 검은 화면을 한 번 누르면 실행이 멈춰요.",
                                     style = MaterialTheme.typography.bodySmall)
                                 HorizontalDivider()
                                 ToggleRow("출석 결과 알림", attendanceNotifications) {
