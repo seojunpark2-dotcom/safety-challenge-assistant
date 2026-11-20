@@ -30,8 +30,8 @@ fun enabledTasks(prefs: SharedPreferences): List<Task> {
 
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val keepFallback = intent.action == RUN_ALARM && !runScheduledTasks(context)
-        schedule(context, keepFallback = keepFallback)
+        if (intent.action == RUN_ALARM) runScheduledTasks(context)
+        schedule(context, keepFallback = intent.action == RUN_ALARM)
     }
 }
 
@@ -41,7 +41,11 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
     override suspend fun doWork(): Result = withContext(Dispatchers.Main) {
         val prefs = applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("enabled", false)) return@withContext Result.success()
-        val started = runScheduledTasks(applicationContext)
+        val date = LocalDate.now().toString()
+        runScheduledTasks(applicationContext)
+        DiagnosticService.instance?.awaitAutomation()
+        if (!prefs.getBoolean("enabled", false)) return@withContext Result.success()
+        val started = prefs.getString("lastScheduledStart", null) == date
         if (!started && enabledTasks(prefs).isNotEmpty() && runAttemptCount == 0) {
             return@withContext Result.retry()
         }
@@ -50,16 +54,14 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
     }
 }
 
-private fun runScheduledTasks(context: Context): Boolean {
+private fun runScheduledTasks(context: Context) {
     val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-    if (!prefs.getBoolean("enabled", false)) return false
+    if (!prefs.getBoolean("enabled", false)) return
     val today = LocalDate.now().toString()
-    if (prefs.getString("lastScheduledStart", null) == today) return true
+    if (prefs.getString("lastScheduledStart", null) == today) return
     val tasks = enabledTasks(prefs)
-    if (DiagnosticService.instance?.start(tasks, scheduled = true) == true) {
-        prefs.edit().putString("lastScheduledStart", today).apply()
-        return true
-    }
+    val service = DiagnosticService.instance
+    if (service?.automationRunning == true || service?.start(tasks, scheduled = true) == true) return
     val message = if (tasks.isEmpty()) "예약 실행 실패 · 선택한 작업이 없어요."
         else "예약 실행을 시작하지 못했어요. 접근성 연결, 대상 앱 설치, 실행 중인 작업을 확인하세요."
     context.recordHistory(message)
@@ -68,7 +70,6 @@ private fun runScheduledTasks(context: Context): Boolean {
     } else {
         context.notifyAutomationStatus(message)
     }
-    return false
 }
 
 internal fun Context.recordHistory(message: String) {

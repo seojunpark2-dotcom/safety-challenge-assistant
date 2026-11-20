@@ -14,15 +14,21 @@ import android.graphics.PixelFormat
 import android.view.View
 import android.view.WindowManager
 import kotlinx.coroutines.*
+import java.time.LocalDate
 
 class DiagnosticService : AccessibilityService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var run: Job? = null
+    internal val automationRunning get() = run?.isActive == true
     override fun onServiceConnected() {
         instance = this
     }
 
     fun log(message: String) = recordHistory(message)
+
+    internal suspend fun awaitAutomation() {
+        run?.join()
+    }
 
     private var wakeId = 0L
     private var wakeResult: CompletableDeferred<Boolean>? = null
@@ -34,7 +40,8 @@ class DiagnosticService : AccessibilityService() {
         if (isWakePending(id)) wakeResult?.complete(ready)
     }
 
-    private suspend fun wakeForSchedule(): Boolean {
+    private suspend fun launchScheduledTarget(launch: Intent): Boolean {
+        if (deviceReady() && targetIsActive()) return true
         val id = SystemClock.elapsedRealtimeNanos()
         val result = CompletableDeferred<Boolean>()
         wakeId = id
@@ -44,9 +51,19 @@ class DiagnosticService : AccessibilityService() {
                 putExtra("wakeRequest", id)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
             })
-            withTimeoutOrNull(30_000) {
+            val ready = withTimeoutOrNull(30_000) {
                 if (!result.await()) return@withTimeoutOrNull false
                 while (!deviceReady()) delay(100)
+                true
+            } == true
+            if (!ready) {
+                log("예약 실행 실패 · 화면 깨우기 또는 잠금 해제 대기 종료")
+                return false
+            }
+            val activity = wakeActivity ?: return false
+            activity.startActivity(launch)
+            withTimeoutOrNull(12_000) {
+                while (!deviceReady() || !targetIsActive()) delay(150)
                 true
             } == true
         } finally {
@@ -60,8 +77,18 @@ class DiagnosticService : AccessibilityService() {
     private fun deviceReady() = getSystemService(PowerManager::class.java).isInteractive &&
         !getSystemService(KeyguardManager::class.java).isKeyguardLocked
 
+    private fun targetIsActive(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        return try {
+            root.packageName?.toString() == TARGET_PACKAGE
+        } finally {
+            @Suppress("DEPRECATION")
+            root.recycle()
+        }
+    }
+
     fun start(tasks: List<Task>, scheduled: Boolean = false): Boolean {
-        if (tasks.isEmpty() || run?.isActive == true) return false
+        if (tasks.isEmpty() || automationRunning) return false
         val launch = packageManager.getLaunchIntentForPackage(TARGET_PACKAGE) ?: return false
         val screenWasOn = getSystemService(PowerManager::class.java).isInteractive
         val ready = deviceReady()
@@ -74,14 +101,19 @@ class DiagnosticService : AccessibilityService() {
             var opened = false
             var noticeBlocked = false
             try {
-                if (!ready && !wakeForSchedule()) {
-                    val message = "예약 실행을 시작하지 못했어요 · 화면 깨우기 또는 잠금 해제 필요"
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+                if (scheduled && !launchScheduledTarget(launch)) {
+                    val message = "예약 실행 실패 · 대상 앱을 화면에 열지 못했어요."
                     log(message)
                     notifyAutomationStatus(message)
                     return@launch
                 }
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
-                startActivity(launch)
+                if (scheduled) {
+                    getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
+                        .putString("lastScheduledStart", LocalDate.now().toString()).apply()
+                } else {
+                    startActivity(launch)
+                }
                 opened = true
                 log("실행 시작")
                 for (task in Task.entries.filter { it in tasks }) {

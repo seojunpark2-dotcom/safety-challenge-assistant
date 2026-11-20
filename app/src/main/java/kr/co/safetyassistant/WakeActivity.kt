@@ -26,7 +26,12 @@ internal class WakeActivity : Activity() {
             window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         }
         setContentView(TextView(this).apply {
-            text = "안전실천 출첵\n잠금을 해제하면 예약 출석을 이어서 진행해요."
+            val keyguard = getSystemService(KeyguardManager::class.java)
+            text = if (keyguard.isKeyguardLocked && keyguard.isKeyguardSecure) {
+                "안전실천 출첵\n잠금을 해제하면 예약 출석을 이어서 진행해요."
+            } else {
+                "안전실천 출첵\n예약 출석을 시작하고 있어요."
+            }
             gravity = Gravity.CENTER
             textSize = 18f
         })
@@ -34,10 +39,19 @@ internal class WakeActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (hasWindowFocus()) prepareLaunch()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) prepareLaunch()
+    }
+
+    private fun prepareLaunch() {
         val service = DiagnosticService.instance ?: return finishAndRemoveTask()
+        if (requested) return
         if (!service.isWakePending(requestId)) return finishAndRemoveTask()
         service.wakeActivity = this
-        if (requested) return
         requested = true
         val keyguard = getSystemService(KeyguardManager::class.java)
         if (!keyguard.isKeyguardLocked) {
