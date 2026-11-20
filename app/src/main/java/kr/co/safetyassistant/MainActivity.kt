@@ -262,8 +262,8 @@ class MainActivity : ComponentActivity() {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(onClick = {
                                         val value = apiKey.trim()
-                                        if (!value.matches(Regex("[A-Za-z0-9_-]{20,200}"))) {
-                                            keyError = "Gemini API 키를 확인하세요. 영문, 숫자, _, -로 된 20~200자입니다."
+                                        if (!value.matches(Regex("[A-Za-z0-9_.-]{20,200}"))) {
+                                            keyError = "Google AI Studio에서 복사한 Gemini API 키만 붙여넣으세요. 키에는 공백이나 줄바꿈이 들어갈 수 없습니다."
                                         } else {
                                             runCatching { QuizKey.save(this@MainActivity, value) }
                                                 .onSuccess {

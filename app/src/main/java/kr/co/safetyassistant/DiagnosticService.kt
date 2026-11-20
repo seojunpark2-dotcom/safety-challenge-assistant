@@ -82,6 +82,7 @@ class DiagnosticService : AccessibilityService() {
         }
         run = scope.launch {
             var opened = false
+            var noticeBlocked = false
             try {
                 if (!ready && !wakeForSchedule()) {
                     val message = "예약 실행을 시작하지 못했어요 · 화면 깨우기 또는 잠금 해제 필요"
@@ -95,7 +96,8 @@ class DiagnosticService : AccessibilityService() {
                 log("실행 시작")
                 for (task in tasks) {
                     activeTask = task
-                    runTask(task, TARGET_PACKAGE)
+                    runTask(task, TARGET_PACKAGE) { noticeBlocked = true }
+                    if (noticeBlocked) break
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -107,7 +109,9 @@ class DiagnosticService : AccessibilityService() {
             } finally {
                 removeCurtain()
                 activeTask = null
-                if (opened && deviceReady()) restoreDisplay(returnApp, screenWasOn)
+                if (opened && deviceReady() && (scheduled || !noticeBlocked)) {
+                    restoreDisplay(returnApp, screenWasOn)
+                }
             }
         }
         return true
