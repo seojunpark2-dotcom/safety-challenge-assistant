@@ -19,7 +19,6 @@ import androidx.work.workDataOf
 import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
 import java.time.Duration
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
@@ -31,9 +30,15 @@ fun enabledTasks(prefs: SharedPreferences): List<Task> {
 
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == RUN_ALARM &&
-            isScheduledFallbackDue(ZonedDateTime.now(), intent.getLongExtra(DUE_AT, 0L))
-        ) runScheduledTasks(context)
+        if (intent.action == RUN_ALARM) {
+            val revision = intent.getLongExtra(SCHEDULE_REVISION, 0L)
+            val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            if (revision != prefs.getLong(SCHEDULE_REVISION, 0L)) return
+            val now = ZonedDateTime.now()
+            if (isScheduledFallbackDue(now, intent.getLongExtra(DUE_AT, 0L))) {
+                runScheduledTasks(context, scheduledRunKey(now.toLocalDate(), revision))
+            }
+        }
         schedule(
             context,
             keepFallback = intent.action == RUN_ALARM,
@@ -49,15 +54,20 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
     override suspend fun doWork(): Result = withContext(Dispatchers.Main) {
         val prefs = applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("enabled", false)) return@withContext Result.success()
-        if (!isScheduledFallbackDue(ZonedDateTime.now(), inputData.getLong(DUE_AT, 0L))) {
+        val revision = inputData.getLong(SCHEDULE_REVISION, 0L)
+        if (revision != prefs.getLong(SCHEDULE_REVISION, 0L)) return@withContext Result.success()
+        val now = ZonedDateTime.now()
+        if (!isScheduledFallbackDue(now, inputData.getLong(DUE_AT, 0L))) {
             schedule(applicationContext, append = true)
             return@withContext Result.success()
         }
-        val date = LocalDate.now().toString()
-        runScheduledTasks(applicationContext)
+        val runKey = scheduledRunKey(now.toLocalDate(), revision)
+        runScheduledTasks(applicationContext, runKey)
         DiagnosticService.instance?.awaitAutomation()
-        if (!prefs.getBoolean("enabled", false)) return@withContext Result.success()
-        val started = prefs.getString("lastScheduledStart", null) == date
+        if (!prefs.getBoolean("enabled", false) || revision != prefs.getLong(SCHEDULE_REVISION, 0L)) {
+            return@withContext Result.success()
+        }
+        val started = prefs.getString("lastScheduledStart", null) == runKey
         if (!started && enabledTasks(prefs).isNotEmpty() && runAttemptCount == 0) {
             return@withContext Result.retry()
         }
@@ -66,14 +76,13 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
     }
 }
 
-private fun runScheduledTasks(context: Context) {
+private fun runScheduledTasks(context: Context, runKey: String) {
     val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     if (!prefs.getBoolean("enabled", false)) return
-    val today = LocalDate.now().toString()
-    if (prefs.getString("lastScheduledStart", null) == today) return
+    if (prefs.getString("lastScheduledStart", null) == runKey) return
     val tasks = enabledTasks(prefs)
     val service = DiagnosticService.instance
-    if (service?.automationRunning == true || service?.start(tasks, scheduled = true) == true) return
+    if (service?.automationRunning == true || service?.start(tasks, scheduledKey = runKey) == true) return
     val reason = when {
         tasks.isEmpty() -> "예약 실행할 작업이 선택되지 않았어요."
         service == null -> "접근성 서비스가 연결되지 않았어요."
@@ -121,11 +130,12 @@ fun schedule(
         return
     }
     val now = ZonedDateTime.now()
+    val revision = p.getLong(SCHEDULE_REVISION, 0L)
     val eligibleThisMinute = includeCurrentMinute &&
-        p.getString("lastScheduledStart", null) != now.toLocalDate().toString()
+        p.getString("lastScheduledStart", null) != scheduledRunKey(now.toLocalDate(), revision)
     val next = nextScheduledRun(now, p.getInt("hour", 9), p.getInt("minute", 0), eligibleThisMinute)
     val pending = PendingIntent.getBroadcast(context, 0,
-        alarmIntent.putExtra(DUE_AT, next.toInstant().toEpochMilli()),
+        alarmIntent.putExtra(DUE_AT, next.toInstant().toEpochMilli()).putExtra(SCHEDULE_REVISION, revision),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     val exactRegistered = if (context.canScheduleExact()) {
         try {
@@ -145,7 +155,7 @@ fun schedule(
     val fallback = if (exactRegistered) next.plusSeconds(45) else next
     val delay = Duration.between(now, fallback).toMillis()
     val request = OneTimeWorkRequestBuilder<ReminderWorker>()
-        .setInputData(workDataOf(DUE_AT to next.toInstant().toEpochMilli()))
+        .setInputData(workDataOf(DUE_AT to next.toInstant().toEpochMilli(), SCHEDULE_REVISION to revision))
         .setInitialDelay(delay, TimeUnit.MILLISECONDS)
         .build()
     val policy = when {
