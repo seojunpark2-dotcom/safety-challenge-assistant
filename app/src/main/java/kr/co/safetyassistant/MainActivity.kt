@@ -78,6 +78,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         current = java.lang.ref.WeakReference(this)
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        if (Build.VERSION.SDK_INT >= 33 && !prefs.getBoolean("notificationPermissionRequested", false)) {
+            prefs.edit().putBoolean("notificationPermissionRequested", true).apply()
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
         setContent {
             MaterialTheme(colorScheme = SafetyColors) {
                 Dashboard(prefs, viewModel())
@@ -97,7 +105,6 @@ class MainActivity : ComponentActivity() {
         }
         var page by rememberSaveable { mutableStateOf(Page.HOME) }
         var curtain by remember { mutableStateOf(prefs.getBoolean("privacyCurtain", false)) }
-        var attendanceNotifications by remember { mutableStateOf(prefs.getBoolean("attendanceNotifications", false)) }
         var enabled by remember { mutableStateOf(prefs.getBoolean("enabled", false)) }
         var hour by remember { mutableIntStateOf(prefs.getInt("hour", 9)) }
         var minute by remember { mutableIntStateOf(prefs.getInt("minute", 0)) }
@@ -119,6 +126,7 @@ class MainActivity : ComponentActivity() {
                 !targetInstalled || !connected -> {
                     page = Page.SETTINGS
                     message = "대상 앱 설치와 접근성 권한을 확인하세요."
+                    notifyRunResult(tasks, unfinishedReason = message)
                 }
                 DiagnosticService.instance?.start(tasks) != true ->
                     message = "잠금 상태나 이미 실행 중인 작업을 확인하세요."
@@ -255,15 +263,12 @@ class MainActivity : ComponentActivity() {
                                 Text("자동화 중 화면을 검게 가리고 밝기를 낮춥니다. 검은 화면을 한 번 누르면 실행이 멈춰요.",
                                     style = MaterialTheme.typography.bodySmall)
                                 HorizontalDivider()
-                                ToggleRow("출석 결과 알림", attendanceNotifications) {
-                                    attendanceNotifications = it
-                                    prefs.edit().putBoolean("attendanceNotifications", it).apply()
-                                    if (it && Build.VERSION.SDK_INT >= 33) {
-                                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    }
-                                }
-                                Text("수동·예약 출석의 성공과 실패를 알림으로 확인할 수 있어요.",
+                                Text("수동·예약 실행이 끝나면 출석, 퀴즈, 룰렛 결과를 한 알림에 표시해요.",
                                     style = MaterialTheme.typography.bodySmall)
+                                OutlinedButton(onClick = {
+                                    startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+                                }) { Text("Android 알림 설정 열기") }
                             }
                             Panel("AI 퀴즈") {
                                 var keyError by remember { mutableStateOf<String?>(null) }

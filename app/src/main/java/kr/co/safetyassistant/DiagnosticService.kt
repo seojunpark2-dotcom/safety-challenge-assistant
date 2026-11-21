@@ -40,13 +40,17 @@ class DiagnosticService : AccessibilityService() {
         if (isWakePending(id)) wakeResult?.complete(ready)
     }
 
-    private suspend fun launchScheduledTarget(launch: Intent): Boolean {
-        if (deviceReady() && targetIsActive()) return true
+    private suspend fun scheduledLaunchFailure(launch: Intent): String? {
+        if (deviceReady() && targetIsActive()) return null
+        val power = getSystemService(PowerManager::class.java)
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        val wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:scheduledLaunch")
         val id = SystemClock.elapsedRealtimeNanos()
         val result = CompletableDeferred<Boolean>()
         wakeId = id
         wakeResult = result
         return try {
+            wakeLock.acquire(45_000)
             startActivity(Intent(this, WakeActivity::class.java).apply {
                 putExtra("wakeRequest", id)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
@@ -56,17 +60,22 @@ class DiagnosticService : AccessibilityService() {
                 while (!deviceReady()) delay(100)
                 true
             } == true
-            if (!ready) {
-                log("예약 실행 실패 · 화면 깨우기 또는 잠금 해제 대기 종료")
-                return false
+            if (!ready) return when {
+                !power.isInteractive -> "화면을 켜지 못했어요."
+                keyguard.isKeyguardLocked && keyguard.isKeyguardSecure ->
+                    "기기의 잠금 인증이 완료되지 않았어요."
+                keyguard.isKeyguardLocked -> "스와이프 잠금 화면을 해제하지 못했어요."
+                else -> "예약 실행 준비 화면을 열지 못했어요."
             }
-            val activity = wakeActivity ?: return false
+            val activity = wakeActivity ?: return "예약 실행 준비 화면이 닫혔어요."
             activity.startActivity(launch)
-            withTimeoutOrNull(12_000) {
+            val opened = withTimeoutOrNull(12_000) {
                 while (!deviceReady() || !targetIsActive()) delay(150)
                 true
             } == true
+            if (opened) null else "대상 앱이 제한 시간 안에 열리지 않았어요."
         } finally {
+            if (wakeLock.isHeld) wakeLock.release()
             wakeId = 0L
             wakeResult = null
             wakeActivity?.finishAndRemoveTask()
@@ -100,12 +109,13 @@ class DiagnosticService : AccessibilityService() {
         run = scope.launch {
             var opened = false
             var noticeBlocked = false
+            val results = mutableMapOf<Task, TaskResult>()
+            var unfinishedReason = "실행을 완료하지 못했어요."
             try {
                 launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
-                if (scheduled && !launchScheduledTarget(launch)) {
-                    val message = "예약 실행 실패 · 대상 앱을 화면에 열지 못했어요."
-                    log(message)
-                    notifyAutomationStatus(message)
+                if (scheduled) scheduledLaunchFailure(launch)?.let { reason ->
+                    log("예약 실행 실패 · $reason")
+                    unfinishedReason = reason
                     return@launch
                 }
                 if (scheduled) {
@@ -117,20 +127,23 @@ class DiagnosticService : AccessibilityService() {
                 opened = true
                 log("실행 시작")
                 for (task in Task.entries.filter { it in tasks }) {
-                    activeTask = task
-                    runTask(task, TARGET_PACKAGE) { noticeBlocked = true }
-                    if (noticeBlocked) break
+                    runTask(task, TARGET_PACKAGE, onNoticeBlocked = { noticeBlocked = true }) {
+                        results[task] = it
+                    }
+                    if (noticeBlocked) {
+                        unfinishedReason = "공지를 닫지 못해 실행을 중단했어요."
+                        break
+                    }
                 }
             } catch (e: CancellationException) {
+                unfinishedReason = "실행이 중지됐어요."
                 throw e
             } catch (e: Exception) {
                 log("실행 실패 · ${e.javaClass.simpleName}")
-                if (Task.ATTENDANCE in tasks && (activeTask == null || activeTask == Task.ATTENDANCE)) {
-                    notifyAttendanceResult("출석 실행 실패 · 대상 앱과 접근성 설정을 확인하세요.")
-                }
+                unfinishedReason = "대상 앱 실행 중 오류가 발생했어요."
             } finally {
                 removeCurtain()
-                activeTask = null
+                notifyRunResult(tasks, results, unfinishedReason)
                 if (opened && deviceReady() && (scheduled || !noticeBlocked)) {
                     restoreDisplay(returnApp, screenWasOn)
                 }
@@ -161,7 +174,6 @@ class DiagnosticService : AccessibilityService() {
         }
     }
 
-    private var activeTask: Task? = null
     private var curtain: View? = null
     private val windows get() = getSystemService(WindowManager::class.java)
 
