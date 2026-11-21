@@ -5,6 +5,11 @@ import org.junit.Test
 import java.time.ZonedDateTime
 
 class ScheduleTest {
+    @Test fun newReservationCanStartInTheCurrentMinuteWithoutRepeating() {
+        val now = ZonedDateTime.parse("2026-11-18T09:00:25+09:00[Asia/Seoul]")
+        assertEquals(now, nextScheduledRun(now, 9, 0, includeCurrentMinute = true))
+        assertEquals(now.toLocalDate().plusDays(1), nextScheduledRun(now, 9, 0).toLocalDate())
+    }
     @Test fun delayedFallbackOnlyRunsOnItsScheduledDay() {
         val due = ZonedDateTime.parse("2026-11-18T09:00+09:00[Asia/Seoul]")
         val dueMillis = due.toInstant().toEpochMilli()
