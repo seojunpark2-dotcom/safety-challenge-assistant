@@ -14,10 +14,13 @@ internal class WakeActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (DiagnosticService.instance?.isWakePending(requestId) != true) {
+        val service = DiagnosticService.instance
+        if (service == null || !service.isWakePending(requestId)) {
             finishAndRemoveTask()
             return
         }
+        service.wakeActivity = this
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -37,9 +40,9 @@ internal class WakeActivity : Activity() {
         })
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (hasWindowFocus()) prepareLaunch()
+    override fun onPostResume() {
+        super.onPostResume()
+        window.decorView.post { if (!isFinishing && !isDestroyed) prepareLaunch() }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -51,7 +54,6 @@ internal class WakeActivity : Activity() {
         val service = DiagnosticService.instance ?: return finishAndRemoveTask()
         if (requested) return
         if (!service.isWakePending(requestId)) return finishAndRemoveTask()
-        service.wakeActivity = this
         requested = true
         val keyguard = getSystemService(KeyguardManager::class.java)
         if (!keyguard.isKeyguardLocked) {
@@ -61,7 +63,10 @@ internal class WakeActivity : Activity() {
         keyguard.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
             override fun onDismissSucceeded() { service.completeWake(requestId, true) }
             override fun onDismissCancelled() { service.completeWake(requestId, false) }
-            override fun onDismissError() { service.completeWake(requestId, false) }
+            override fun onDismissError() {
+                if (hasWindowFocus()) service.completeWake(requestId, false)
+                else requested = false // Retry when the window takes focus.
+            }
         })
     }
 

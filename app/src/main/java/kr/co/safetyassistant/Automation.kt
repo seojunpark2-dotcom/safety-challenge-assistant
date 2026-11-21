@@ -47,15 +47,20 @@ internal fun rouletteResult(before: Set<String>, after: List<String>): String {
     }
 }
 
-internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNoticeBlocked: () -> Unit) {
+internal suspend fun DiagnosticService.runTask(
+    task: Task,
+    pkg: String,
+    onNoticeBlocked: () -> Unit,
+    onResult: (TaskResult) -> Unit
+) {
     val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
     val runDate = LocalDate.now()
     val key = "attempt.$runDate.$task"
     val attempted = settings.getBoolean(key, false)
     val attendanceMonth = Regex("""(?<![0-9])${runDate.monthValue}\s*월\s*출석\s*체크""")
-    fun report(message: String) {
+    fun report(message: String, success: Boolean = false) {
         log("${task.title}: $message")
-        if (task == Task.ATTENDANCE) notifyAttendanceResult(message)
+        onResult(TaskResult(message, success))
     }
     fun reserve(): Boolean = settings.edit().putBoolean(key, true).commit()
     var submitted = false
@@ -72,6 +77,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
     var rouletteBefore = emptySet<String>()
     var rouletteInlineResult: String? = null
     var rouletteConfirmationRequested = false
+    var rouletteConfirmedResult: String? = null
     var scrolls = 0
     var nextScrollAt = 0L
     var nextAttendanceReadAt = 0L
@@ -240,10 +246,13 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                 if (!rouletteConfirmationRequested && confirm()) {
                     rouletteConfirmationRequested = true
                     if (!submitted) reserve()
-                    report(if (alreadyPlayed) "이미 참여함" else rouletteResult(rouletteBefore, labels))
+                    rouletteConfirmedResult = if (alreadyPlayed) "이미 참여함" else rouletteResult(rouletteBefore, labels)
                 }
             } else {
-                if (rouletteConfirmationRequested) return
+                rouletteConfirmedResult?.let { result ->
+                    report(result, success = result == "이미 참여함" || result == "당첨 확인" || result == "미당첨")
+                    return
+                }
                 if ("당첨을 축하" in screen || "금일 응모가 마감되었습니다" in screen) {
                     rouletteInlineResult = rouletteResult(rouletteBefore, labels)
                 }
@@ -258,7 +267,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
         if (completionConfirmationRequested) {
             if ("확인" in labels) return@repeat
             reserve()
-            report(if (task == Task.ATTENDANCE) "완료" else "참여 완료")
+            report(if (task == Task.ATTENDANCE) "오늘 출석을 완료했어요." else "참여 완료", success = true)
             return
         }
         if (task != Task.ROULETTE && !homeVisible &&
@@ -284,7 +293,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                         return@repeat
                     }
                     reserve()
-                    report("완료")
+                    report("오늘 출석을 완료했어요.", success = true)
                     return
                 }
                 val now = SystemClock.elapsedRealtime()
@@ -312,7 +321,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                                     readScreenMark(mark, pkg, root.windowId, ::attendanceMarkChecked) == true)
                             ) {
                                 reserve()
-                                report(if (submitted) "완료" else "이미 출석 완료")
+                                report(if (submitted) "오늘 출석을 완료했어요." else "오늘 이미 출석했어요.", success = true)
                                 return
                             }
                             // Take a fresh tree after asynchronous screenshot capture.
@@ -364,7 +373,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                         return@repeat
                     }
                     reserve()
-                    report("참여 완료")
+                    report("참여 완료", success = true)
                     return
                 }
                 if (submitted) return@repeat
@@ -396,7 +405,7 @@ internal suspend fun DiagnosticService.runTask(task: Task, pkg: String, onNotice
                                 return
                             }
                             quizAnswer = result.answer
-                            report("AI 판단 · ${result.note}")
+                            log("${task.title}: AI 판단 · ${result.note}")
                             return@repeat
                         }
                     }
