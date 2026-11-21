@@ -1,8 +1,14 @@
 package kr.co.safetyassistant
 
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZonedDateTime
+
+internal const val SCHEDULE_REVISION = "scheduleRevision"
+
+internal fun scheduledRunKey(date: LocalDate, revision: Long): String =
+    if (revision == 0L) date.toString() else "$date:$revision"
 
 internal fun isScheduledFallbackDue(now: ZonedDateTime, dueMillis: Long): Boolean {
     if (dueMillis <= 0L) return false

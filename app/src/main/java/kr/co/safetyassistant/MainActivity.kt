@@ -226,10 +226,14 @@ class MainActivity : ComponentActivity() {
                                 }
                                 OutlinedButton(onClick = {
                                     TimePickerDialog(this@MainActivity, { _, h, m ->
-                                        hour = h
-                                        minute = m
-                                        prefs.edit().putInt("hour", h).putInt("minute", m).apply()
-                                        schedule(this@MainActivity, includeCurrentMinute = true)
+                                        if (hour != h || minute != m) {
+                                            hour = h
+                                            minute = m
+                                            prefs.edit().putInt("hour", h).putInt("minute", m)
+                                                .putLong(SCHEDULE_REVISION, prefs.getLong(SCHEDULE_REVISION, 0L) + 1L)
+                                                .apply()
+                                            schedule(this@MainActivity, includeCurrentMinute = true)
+                                        }
                                     }, hour, minute, true).show()
                                 }) { Text("실행 시간 %02d:%02d".format(hour, minute)) }
                                 if (enabled && !exactAlarmAllowed && Build.VERSION.SDK_INT >= 31) {

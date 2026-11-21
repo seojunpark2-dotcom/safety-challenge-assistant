@@ -5,6 +5,13 @@ import org.junit.Test
 import java.time.ZonedDateTime
 
 class ScheduleTest {
+    @Test fun changedTimeGetsItsOwnRunWhileUnchangedSchedulesKeepTheirKey() {
+        val today = java.time.LocalDate.parse("2026-11-18")
+        assertEquals("2026-11-18", scheduledRunKey(today, 0L))
+        assertEquals("2026-11-18:1", scheduledRunKey(today, 1L))
+        assertEquals("2026-11-18:2", scheduledRunKey(today, 2L))
+        assertEquals("2026-11-19:2", scheduledRunKey(today.plusDays(1), 2L))
+    }
     @Test fun newReservationCanStartInTheCurrentMinuteWithoutRepeating() {
         val now = ZonedDateTime.parse("2026-11-18T09:00:25+09:00[Asia/Seoul]")
         assertEquals(now, nextScheduledRun(now, 9, 0, includeCurrentMinute = true))

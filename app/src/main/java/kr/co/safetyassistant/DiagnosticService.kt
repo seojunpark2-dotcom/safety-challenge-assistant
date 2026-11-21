@@ -14,7 +14,6 @@ import android.graphics.PixelFormat
 import android.view.View
 import android.view.WindowManager
 import kotlinx.coroutines.*
-import java.time.LocalDate
 
 class DiagnosticService : AccessibilityService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -104,7 +103,8 @@ class DiagnosticService : AccessibilityService() {
         }
     }
 
-    fun start(tasks: List<Task>, scheduled: Boolean = false): Boolean {
+    fun start(tasks: List<Task>, scheduledKey: String? = null): Boolean {
+        val scheduled = scheduledKey != null
         if (tasks.isEmpty() || automationRunning) return false
         val launch = packageManager.getLaunchIntentForPackage(TARGET_PACKAGE) ?: return false
         val screenWasOn = getSystemService(PowerManager::class.java).isInteractive
@@ -126,9 +126,9 @@ class DiagnosticService : AccessibilityService() {
                     unfinishedReason = reason
                     return@launch
                 }
-                if (scheduled) {
+                if (scheduledKey != null) {
                     getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
-                        .putString("lastScheduledStart", LocalDate.now().toString()).apply()
+                        .putString("lastScheduledStart", scheduledKey).apply()
                 } else {
                     startActivity(launch)
                 }
