@@ -151,16 +151,20 @@ class DiagnosticService : AccessibilityService() {
                 unfinishedReason = "대상 앱 실행 중 오류가 발생했어요."
             } finally {
                 removeCurtain()
-                notifyRunResult(tasks, results, unfinishedReason)
-                if (opened && deviceReady() && (scheduled || !noticeBlocked)) {
-                    restoreDisplay(returnApp, screenWasOn)
+                try {
+                    if (opened && deviceReady() && (scheduled || !noticeBlocked)) {
+                        if (scheduled && !screenWasOn) finishScreenOffRun()
+                        else restoreDisplay(returnApp)
+                    }
+                } finally {
+                    notifyRunResult(tasks, results, unfinishedReason)
                 }
             }
         }
         return true
     }
 
-    private fun restoreDisplay(previous: String?, screenWasOn: Boolean) {
+    private fun restoreDisplay(previous: String?) {
         // Do not steal focus again if the user has already switched to another app.
         if (rootInActiveWindow?.packageName?.toString() != TARGET_PACKAGE) return
         MainActivity.removeOwnTask()
@@ -177,9 +181,6 @@ class DiagnosticService : AccessibilityService() {
             if (restored) return
         }
         performGlobalAction(GLOBAL_ACTION_HOME)
-        if (!screenWasOn && Build.VERSION.SDK_INT >= 28) {
-            performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
-        }
     }
 
     private var curtain: View? = null
