@@ -69,9 +69,6 @@ class MainActivity : ComponentActivity() {
         connected = DiagnosticService.instance != null
         targetInstalled = packageManager.getLaunchIntentForPackage(DiagnosticService.TARGET_PACKAGE) != null
         exactAlarmAllowed = canScheduleExact()
-        if (!exactAlarmAllowed && getSharedPreferences("settings", MODE_PRIVATE).getBoolean("enabled", false)) {
-            schedule(this, keepFallback = true)
-        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -221,17 +218,18 @@ class MainActivity : ComponentActivity() {
                                 ToggleRow("매일 예약 실행", enabled) {
                                     enabled = it
                                     prefs.edit().putBoolean("enabled", it).apply()
-                                    if (it && Build.VERSION.SDK_INT >= 33) {
-                                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    schedule(this@MainActivity, includeCurrentMinute = it)
+                                    if (it && Build.VERSION.SDK_INT >= 31 && !exactAlarmAllowed) {
+                                        startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                            Uri.fromParts("package", packageName, null)))
                                     }
-                                    schedule(this@MainActivity)
                                 }
                                 OutlinedButton(onClick = {
                                     TimePickerDialog(this@MainActivity, { _, h, m ->
                                         hour = h
                                         minute = m
                                         prefs.edit().putInt("hour", h).putInt("minute", m).apply()
-                                        schedule(this@MainActivity)
+                                        schedule(this@MainActivity, includeCurrentMinute = true)
                                     }, hour, minute, true).show()
                                 }) { Text("실행 시간 %02d:%02d".format(hour, minute)) }
                                 if (enabled && !exactAlarmAllowed && Build.VERSION.SDK_INT >= 31) {

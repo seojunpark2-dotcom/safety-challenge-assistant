@@ -51,6 +51,14 @@ class DiagnosticService : AccessibilityService() {
         wakeResult = result
         return try {
             wakeLock.acquire(45_000)
+            if (deviceReady()) {
+                startActivity(launch)
+                val opened = withTimeoutOrNull(3_000) {
+                    while (deviceReady() && !targetIsActive()) delay(150)
+                    deviceReady() && targetIsActive()
+                } == true
+                if (opened) return null
+            }
             startActivity(Intent(this, WakeActivity::class.java).apply {
                 putExtra("wakeRequest", id)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)

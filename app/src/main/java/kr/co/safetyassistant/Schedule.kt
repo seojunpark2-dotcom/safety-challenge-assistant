@@ -10,9 +10,10 @@ internal fun isScheduledFallbackDue(now: ZonedDateTime, dueMillis: Long): Boolea
     return !now.isBefore(due) && now.toLocalDate() == due.toLocalDate()
 }
 
-fun nextScheduledRun(now: ZonedDateTime, hour: Int, minute: Int): ZonedDateTime {
+fun nextScheduledRun(now: ZonedDateTime, hour: Int, minute: Int, includeCurrentMinute: Boolean = false): ZonedDateTime {
     val time = LocalTime.of(hour, minute)
     val today = now.toLocalDate()
     val next = today.atTime(time).atZone(now.zone)
+    if (includeCurrentMinute && !now.isBefore(next) && now.isBefore(next.plusMinutes(1))) return now
     return if (next.isAfter(now)) next else today.plusDays(1).atTime(time).atZone(now.zone)
 }

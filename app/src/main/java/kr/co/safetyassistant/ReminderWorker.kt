@@ -31,8 +31,14 @@ fun enabledTasks(prefs: SharedPreferences): List<Task> {
 
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == RUN_ALARM) runScheduledTasks(context)
-        schedule(context, keepFallback = intent.action == RUN_ALARM)
+        if (intent.action == RUN_ALARM &&
+            isScheduledFallbackDue(ZonedDateTime.now(), intent.getLongExtra(DUE_AT, 0L))
+        ) runScheduledTasks(context)
+        schedule(
+            context,
+            keepFallback = intent.action == RUN_ALARM,
+            includeCurrentMinute = intent.action == AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
+        )
     }
 }
 
@@ -98,19 +104,29 @@ internal fun Context.notifyAutomationStatus(message: String) {
     try { manager.notify(1, notification) } catch (_: SecurityException) { }
 }
 
-fun schedule(context: Context, append: Boolean = false, keepFallback: Boolean = false) {
+fun schedule(
+    context: Context,
+    append: Boolean = false,
+    keepFallback: Boolean = false,
+    includeCurrentMinute: Boolean = false
+) {
     val p = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     val manager = WorkManager.getInstance(context)
     val alarms = context.getSystemService(AlarmManager::class.java)
-    val pending = PendingIntent.getBroadcast(context, 0, Intent(context, ReminderReceiver::class.java)
-        .setAction(RUN_ALARM), PendingIntent.FLAG_IMMUTABLE)
+    val alarmIntent = Intent(context, ReminderReceiver::class.java).setAction(RUN_ALARM)
     if (!p.getBoolean("enabled", false)) {
-        alarms.cancel(pending)
+        PendingIntent.getBroadcast(context, 0, alarmIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE)?.let(alarms::cancel)
         manager.cancelUniqueWork("daily")
         return
     }
     val now = ZonedDateTime.now()
-    val next = nextScheduledRun(now, p.getInt("hour", 9), p.getInt("minute", 0))
+    val eligibleThisMinute = includeCurrentMinute &&
+        p.getString("lastScheduledStart", null) != now.toLocalDate().toString()
+    val next = nextScheduledRun(now, p.getInt("hour", 9), p.getInt("minute", 0), eligibleThisMinute)
+    val pending = PendingIntent.getBroadcast(context, 0,
+        alarmIntent.putExtra(DUE_AT, next.toInstant().toEpochMilli()),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     val exactRegistered = if (context.canScheduleExact()) {
         try {
             val settings = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java),
@@ -122,7 +138,9 @@ fun schedule(context: Context, append: Boolean = false, keepFallback: Boolean = 
             false
         }
     } else false
-    if (!exactRegistered) alarms.cancel(pending)
+    if (!exactRegistered) {
+        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.toInstant().toEpochMilli(), pending)
+    }
     // Keep WorkManager scheduled because revocation removes exact alarms without warning.
     val fallback = if (exactRegistered) next.plusSeconds(45) else next
     val delay = Duration.between(now, fallback).toMillis()
